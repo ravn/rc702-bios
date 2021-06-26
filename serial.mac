@@ -1,0 +1,300 @@
+;------------------------------------------------------------------------ 
+; Denne fil indeholder en komplet disasemblering af det serielle interface
+; i Piccolo bios.  Initialiseringsdelen er endnu ikke skrevet (900916)
+;
+; UARTen er en Z80 SIO.
+;
+; Denne udgave kan ikke k|re, men er beregnet til dokumenteringsform}l.
+; Koden er identisk med den i BIOS'en fra DC84 til DDDE.
+;
+; 910115 - nu er disassembleringen startet og denne fil inkluderes (n{sten)
+;          r}t i C.MAC, og der er derfor flyttet et par konstanter.
+;
+; 910223 - Modificeret til buffer p} AuxIn. (SioSize)
+;         
+;-----------------------------------------------------------------------
+	subttl	File: SERIAL.MAC
+; Porte
+;
+T$Data	equ	08h		; Terminal data og kontrol port
+T$Ctrl	equ	0ah		;	
+L$Data	equ	09h		; Printer data og kontrol port
+L$Ctrl	equ	0bh		;
+;
+; SIO kommandoer.  De fleste bruges ikke.
+;
+; WR0
+RESI	equ	10h		; Reset Ext/Stat Int
+CHRST	equ	18h		; Channel reset.
+EIONRC	equ	20h		; Enable Interrupt on next received char
+RTIP	equ	28h		; Reset Tx Interrupt pending
+RERR	equ	30h		; Reset from Error
+RFI	equ	38h		; Return from Int
+RRCC	equ	40h		; Reset Rx CRC checker
+RTCH	equ	80h		; Reset Tx CTC checker
+RTUEL	equ	0c0h		; Reset Tx Under/EOM Latch
+;
+; WR1
+WAIT	equ	00		; Wait function
+DRCVRI	equ	00		; Disable Receive Interrupts
+EXTIE	equ	01		; External interrupt enable
+XMTRIE	equ	02		; Transmit interrupt enable
+SAVECT	equ	04		; Status affects vector
+FIRSTC	equ	08		; Rx interrupt on first character
+PAVECT	equ	10h		; Rx interrupt on all characters (parity vector)
+PDAVCT	equ	18h		; Rx interrupt on all characters (parity unimportant)
+WRONRT	equ	20h		; Wait/Ready on receive
+RDY	equ	40h		; Ready function
+WRDYEN	equ	80h		; Wait/Ready enable
+;
+; WR2, WR3 og WR4 skippet (kun i init fasen eller syncront)
+;
+; WR5
+T5	equ	00h		; 5 bits/char
+XCRCEN	equ	01h		; Transmit CRC enable
+RTS	equ	02h		; Request to send
+SELCRC	equ	04h		; Select CRC-16 polynomial
+XENABL	equ	08h		; Transmitter enable
+BREAK	equ	10h		; Send break
+T7	equ	20h		; 7 bits/char
+T6	equ	40h		; 6 bits/char
+T8	equ	60h		; 8 bits/char
+DTR	equ	80h		; Data terminal ready
+;
+;*** TRUE	equ	0ffh		; Til statusfunktioner
+;*** FALSE	equ	0000		;
+;
+;***ListBit	equ	0da35h		; EXTERNAL VALUE
+;***AuxBit	equ	0da34h		;  giving 5..8 bits pr character
+;
+;****SaveSP	equ	0f34bh		;
+;****IntSP	equ	0f620h		;
+;
+;****WarmBt	equ	0000h
+; 
+; Macroer:
+;
+EnterInt	MACRO
+	ld	(SaveSp), SP	;;
+	ld	sp, IntStack	;;
+	push	af		;;
+	ENDM
+
+LeaveInt	MACRO
+	pop	af
+	ld	SP, (SaveSp)
+	ei
+	reti
+	ENDM
+
+Ireg	MACRO	PortNr	;; Device= I, PortNr=0..7
+	ld	A, PortNr
+	out	(T$Ctrl), A
+	ENDM
+	
+
+Lreg	MACRO	PortNr	;; Device= L, PortNr=0..7
+	ld	A, PortNr
+	out	(L$Ctrl), A
+	ENDM
+	
+
+
+; L$ refererer til printeren (LIST)
+; I$  -         -  TerminalIn (IN)
+; O$  -         -  TerminalOut (OUT)
+;
+; x$Stat er status byte 
+; x$Char er portens tegn
+
+;	****	.PHASE	0DC84h
+
+aibuf:		queue	siosize	; Fra queue.mac.  siosize sat i C.MAC
+
+L$Stat::	db	TRUE	; PrinterReady
+;** I$Stat::	db	TRUE	; AuxInReady
+O$Stat::	db	TRUE	; AuxOutReady
+;** I$Char::	db	0	; AuxInChar
+I$Chr2::	db	0	; En m{rkv{rdig kopi ved printer fejl????
+T$RR0::		db	0	; Terminal port - RR0 ved ExtStat
+T$RR1::		db	0	;                 RR1 ved SpRxCond
+L$RR0::		db	0	; Printer port  - RR0 ved ExtStat
+L$RR1::		db	0eh	;                 RR1 ved SpRxCond
+
+; ExtStat er det fejlinterrupt som sker ved Break, CTS, eller DCD change.
+; SpRxCond ved paritets, overrun eller framing error.  Ref s. 13!
+; 
+;
+; Her kommer koden.
+ListSt::			; BIOS ListStatus entry
+	ld	A, (L$Stat)	; 
+	ret			; A=0 : Not Ready; A=FF : Ready
+
+List::				; BIOS List entry (Ud p} printer med C)
+	ld	A, (L$Stat)	; BEGIN
+	or	A		;
+	jr	z, List		;   WHILE NOT ListStatus DO Null;
+				;
+	di			;   (* Disable interrupts *)
+	ld	A, FALSE	;
+	ld	(L$Stat), A	;   ListStatus:= FALSE;
+				;
+	Lreg	5		;   Set DTR+ TxEnable+ RTS+ Parity
+	ld	a, (PrintBits)	;
+	add	a, DTR+ RTS+ XENABL
+	out	(L$Ctrl), a	;
+	Lreg	1		;
+	Lreg	<EXTiE+ XMTRIE+ SAVECT>
+	ld	a,c		;
+	out	(L$Data), a	;
+	ei			;   (* Endable interrutps *)
+	ret			;END;
+
+;----------------------------------------
+;
+; AUX in. Oprindelig blev AuxGet kaldt af AuxIn.  Den er nu flyttet
+; til at blive kaldt af interrupt rutinen, og derfor er interrupt
+; enable/disable fjernet.  AuxIn benytter nu istedet Q$GET
+;---------------------------------------
+AuxGet:					; Function AUXGET: BYTE;
+;----	di				; INTERRUPT;
+;	xor	a			; BEGIN
+;	ld	(I$Stat),a		;   AuxInReady:= FALSE;
+	Ireg	5			;
+	ld	a, (TermBits)		;   WITH Port[AuxIn] DO
+	add	a, DTR+ RTS+ XENABL	;   BEGIN
+	out	(T$Ctrl), a		;     DTR:= High; RTS:= High;
+	Ireg	1			;     Transmit enable;
+	Ireg	<PDAVCT+ EXTIE+ XMTRIE>	;   END;
+;----	ei				; END;
+	ret				;
+
+AuxStatus::		; 0= Ej klar, $FF= klar
+	push	ix
+	ld	ix, aibuf
+	call	q$empty
+	pop	ix
+	ld	a, 0				; ld	a, (I$Stat)
+	ret	z
+	dec	a
+	ret
+AuxIn::
+	call	AuxStatus
+	; or	  a
+	jr	z, AuxIn
+	push	ix
+	ld	ix, aibuf
+	call	q$get
+	pop	ix
+	ret
+	
+;-----------------------------------------------------
+;
+; AuxOut
+;-----------------------------------------------------
+
+AuxOut::
+	ld	a,(O$Stat)
+	or	a
+	jr	z, AuxOut
+	di
+	ld	a, FALSE
+	ld	(O$Stat), a
+	Ireg	5
+	ld	a, (TermBits)
+	add	a, Dtr+ RTS+ XENABL
+	out	(T$Ctrl), a
+	Ireg	1
+	Ireg	<PDAVCT+ EXTIE+ XMTRIE>	;
+	ld	a,c
+	out	(T$Data), a
+	ei
+	ret
+
+;-----------------------------------------------------
+;
+; END OF BIOS routines.  Nu kommer interrupt modulet.
+;
+;-----------------------------------------------------
+
+Btxbempty::			; Printer klar til at modtage tegn.
+	EnterInt
+	Lreg	RTIP		; Reset TxPending
+	ld	a, TRUE		;
+	ld	(L$Stat), a	; ListStatus:= TRUE;
+	LeaveInt		;
+
+Bextstat::			; Ydre fejl (Break, CTS, DCD change)
+	EnterInt		;
+	in	a, (L$Ctrl)	;
+	ld	(L$RR0), a	;
+	Lreg	RESI		; Reset Ext/Stat int
+	LeaveInt
+
+BRxChar::
+	EnterInt
+	in	a, (T$Data)	;
+	ld	(I$Chr2), a	; Lagres i AuxIn selvom det er PrinterIn??
+	LeaveInt		;
+
+BSpRxCond::			; parity/ overrun/ framing error 
+	EnterInt		;
+	Lreg	1		;
+	in	a, (L$Ctrl)	;
+	ld	(L$RR1), a	;
+	Lreg	RERR		; Reset fom Error
+	LeaveInt
+
+;----- END OF Printer Routines
+; Aux rutiner
+;
+ATxBEmpty::
+	EnterInt
+	Ireg	RTIP		; Reset Tx Pending
+	ld	a, TRUE		;
+	ld	(O$Stat), a	;
+	LeaveInt
+
+AExtStat::
+	EnterInt
+	in	a, (T$Ctrl)
+	ld	(T$RR0), a
+	Ireg	RESI		; Reset Ext/Stat Int
+	LeaveInt
+
+ARxChar::			; Tegn modtaget-- saettes ind i koe.
+	EnterInt		;
+	push	bc		;
+	push	de		;
+	push	hl		;
+	push	ix		; 
+	ld	ix, aibuf	; BEGIN
+	call	q$full		;
+	in	a, (T$Data)	;  a:= PORT[ AuxIn];
+	push	af		;  AuxGet;  (* Clear Interrupt *)
+	call	AuxGet		;  IF Not BufferFull(aibuf) THEN
+	pop	af		;    BufferPut(a);
+	jr	z, ARx$X	; 
+	call	q$put		;
+Arx$X::				;
+	pop	ix		;
+	pop	hl		;
+	pop	de		;
+	pop	bc		;
+	LEaveInt		; END;
+
+
+ASpRxCOnd::
+	EnterInt
+	Ireg	1
+	in	a, (T$Ctrl)
+	ld	(T$RR1), a
+	Ireg	RERR		; Reset error
+;	ld	a, 0		;
+;	ld	(I$Char), a	; AuxInChar:= @0;
+;	ld	a, TRUE		; AuxInReady:= TRUE;
+;	ld	(I$Stat), a	;
+	LeaveInt	
+
+;*******	.DEPHASE
+

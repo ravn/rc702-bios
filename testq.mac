@@ -1,0 +1,30 @@
+;
+; Testbed for QUEUE.MAC
+;
+        .z80
+        
+	jp	start
+	
+	INCLUDE QUEUE
+	
+q1::	queue	10
+q2::	queue	2
+
+start::	ld	a,1
+	ld	ix,q1
+	call	q$put
+	ld	a,2
+	ld	ix,q1
+	call	q$put
+	ld	a,3
+	ld	ix,q1
+	call	q$put
+	
+	ld	a,1
+	ld	ix,q2
+	call	q$put
+	
+	ret
+		
+	end
+	

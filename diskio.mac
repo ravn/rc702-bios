@@ -1,0 +1,1245 @@
+;---------------------------------------------------------------
+;
+; Alle FDC/HDC rutiner er samlet her
+;
+;
+;---------------------------------------------------------------
+;SELECT DISK.  RETURNS HL=^DPH(DRIVE) OR HL=0 IF NONE
+;
+	subttl	File: DISKIO.MAC
+SELDSK:				; 
+	LD	HL,0		; 
+	ADD	HL,SP		; 
+	LD	SP,BIOSSTACK	; 
+	PUSH	HL		; 
+	LD	HL,0		; 
+	LD	A,(DRNO)	; 
+	CP	C		; 
+	JP	C,XSELDSK	; 
+	LD	A,C		; 
+	; indsat 910404 for at give select fejl automatisk p} C: osv. 
+	IFf	UseHD
+	 cp	2
+	 jp	nc, xseldsk
+	endif
+	;
+	LD	(SEKDSK),A	; 
+				;STEP THROUGH DPHS UNTIL FOUND THE RIGHT ONE
+	LD	BC,10H		; 
+	LD	DE,DR0		; 
+	LD	HL,0		; 
+NEXTDPH:			; 
+	OR	A		; 
+	jr	Z,FOUNDDPH	; 
+	INC	DE		; 
+	ADD	HL,BC		; 
+	DEC	A		; 
+	jr	NEXTDPH		; 
+;
+;
+;HERE IS DE=^DRVCONFIG, HL=OFFSET IN DPHTABLE
+FOUNDDPH:			; 
+	LD	C,L		; 
+	LD	B,H		; 
+	EX	DE,HL		; 
+	LD	A,(HL)		; 
+	LD	HL,CFORM	; 
+	CP	(HL)		; 
+	jr	Z,SELN		; 
+	PUSH	AF		; 
+	PUSH	BC		; 
+	LD	A,(HSTWRT)	; 
+	OR	A		; 
+	CALL	NZ,WRITEHST	; 
+	XOR	A		; 
+	LD	(HSTWRT),A	; 
+	POP	BC		; 
+	POP	AF		; 
+;
+;
+;SELECT NEW FORMAT
+SELN:				; 
+	LD	(CFORM),A	; 
+	CALL	FLASS		; 
+	LD	(FORM),HL	; 
+	INC	HL		; 
+	INC	HL		; 
+	INC	HL		; 
+	INC	HL		; 
+	LD	A,(HL)		; 
+	LD	(EOTV),A	; 
+	PUSH	BC		; 
+	LD	A,(CFORM)	; 
+	AND	0F8H		; 
+	OR	A		; 
+	RLA			; 
+	LD	E,A		; 
+	LD	D,0		; 
+	LD	HL,FSPAR0	; 
+	ADD	HL,DE		; 
+	LD	DE,DPBLK	; 
+	LD	BC,10H		; 
+	LDIR			; 
+	LD	HL,(DPBLK)	; 
+	LD	BC,0DH		; 
+	ADD	HL,BC		; 
+	EX	DE,HL		; 
+	LD	HL,LEA90	; 
+	LD	B,0		; 
+	LD	A,(SEKDSK)	; 
+	LD	C,A		; 
+	ADD	HL,BC		; 
+	ADD	HL,BC		; 
+	LD	BC,2		; 
+	LDIR			; 
+	POP	BC		; 
+	LD	HL,DPHBASE	; 
+	ADD	HL,BC		; 
+	EX	DE,HL		; 
+	LD	HL,0AH		; 
+	ADD	HL,DE		; 
+	EX	DE,HL		; 
+	LD	A,(DPBLK)	; 
+	LD	(DE),A		; 
+	INC	DE		; 
+	LD	A,(DPBLK1)	; 
+	LD	(DE),A		; 
+XSELDSK:			; 
+	EX	DE,HL		; 
+	POP	HL		; 
+	LD	SP,HL		; 
+	EX	DE,HL		; 
+	RET			; 
+FLASS:				; 
+	LD	HL,FDF1		; 
+	LD	A,(CFORM)	; 
+	AND	0F8H		; 
+	LD	E,A		; 
+	LD	D,0		; 
+	ADD	HL,DE		; 
+	RET			; 
+SETTRK:				; 
+	LD	H,B		; 
+	LD	L,C		; 
+	LD	(TRACK),HL	; 
+	RET			; 
+SETSEC:				; 
+	LD	L,C		; 
+	LD	H,B		; 
+	LD	(SECTOR),HL	; 
+	RET			; 
+SETDMA:				; 
+	LD	H,B		; 
+	LD	L,C		; 
+	LD	(DMAAREA),HL	; 
+	RET			; 
+SECTRAN:			; No sector translation here
+	LD	H,B		; 
+	LD	L,C		; 
+	RET			;
+	page
+				; F|lgende rutiner er praktisk taget kopieret 
+DSKREAD:			; fra IIT bios, startende side 1-32
+	XOR	A		; 
+	LD	(UNACNT),A	; Clear unallocated count
+	LD	A,1		; 
+	LD	(READOP),A	; ReadOpertion:= YES+
+	LD	(RSFLAG),A	; ??
+	LD	A,2		; 
+	LD	(WRTYPE),A	; Write_Type:= Unallocated;
+	jp	RWOPER		; 
+
+;WRITE SECTOR.  RETUR A=0 NO ERRORS, A=1 NON-RECOVERABLE ERROR
+
+DSKWRITE:			; 
+	XOR	A		; 
+	LD	(READOP),A	; ReadOperation:= FALSE;
+	LD	A,C		; 
+	LD	(WRTYPE),A	; Get Write_Type from caller
+	CP	2		; 
+	jr	NZ,CHKUNA	; IF Write_Type=Unallocated THEN
+	LD	A,(CPMRBP)	; BEGIN
+	LD	(UNACNT),A	;   UnACNT:= BlockSize/128;
+	LD	A,(SEKDSK)	;   UnaDSK:= Seek Disk;
+	LD	(UNADSK),A	; 
+	LD	HL,(TRACK)	;   
+	LD	(UNATRK),HL	;   UnaTRK:= SeekTrack;
+	LD	HL,(SECTOR)	; 
+	LD	(UNASEC),HL	;   UnaSEC:= SeekSector;
+				; END;
+CHKUNA:				; 
+	LD	A,(UNACNT)	; 
+	OR	A		; IF UnaCNT<>0 THEN
+	jr	Z,ALLOC		; BEGIN
+	DEC	A		;   UnaCNT:= UnaCNT-1;
+	LD	(UNACNT),A	; 
+	LD	A,(SEKDSK)	;   IF (UnaCNT<>SeekDisk) OR 
+	LD	HL,UNADSK	;   
+	CP	(HL)		; 
+	jr	NZ,ALLOC	; 
+	LD	HL,UNATRK	; 
+	CALL	TRKCMP		; 
+	jr	NZ,ALLOC	;     (UnaTRK<>Track) OR
+	LD	A,(SECTOR)	; 
+	LD	HL,UNASEC	; 
+	CP	(HL)		; 
+	jr	NZ,ALLOC	;     (UnaSec<>Sector) THEN
+	LD	A,(SECTOR+1)	; 
+	INC	HL		; 
+	CP	(HL)		; 
+	jr	NZ,ALLOC	;   BEGIN
+	LD	HL,(UNASEC)	;     UnaSec:= UnaSec+1;
+	INC	HL		; 
+	LD	(UNASEC),HL	; 
+	EX	DE,HL		; 
+	LD	HL,LF354	; 
+	PUSH	BC		; 
+	LD	C,(HL)		; 
+	INC	HL		; 
+	LD	B,(HL)		; 
+	EX	DE,HL		; 
+	AND	A		; 
+	SBC	HL,BC		; 
+	POP	BC		; 
+	jr	C,NOOVF		;     IF UnaSEC>=CPMSPT THEN
+	LD	HL,0		;     BEGIN
+	LD	(UNASEC),HL	;       UnaSEC:= 0;
+	LD	HL,(UNATRK)	;       UnaTRK:= UnaTRK+1;
+	INC	HL		; 
+	LD	(UNATRK),HL	;     END;
+NOOVF:				; 
+	XOR	A		; 
+	LD	(RSFLAG),A	; 
+	LD	A,(SECTOR)	; 
+	LD	HL,SECMSK	; 
+	AND	(HL)		; 
+	CP	(HL)		; 
+	LD	A,0		; 
+	jr	NZ,SETMSK	; 
+	INC	A		; 
+SETMSK:				; 
+	LD	(UNAMSK),A	; 
+	jr	RWOPER		; 
+ALLOC:				; 
+	XOR	A		; 
+	LD	(UNACNT),A	; 
+	LD	A,(SECMSK)	; 
+	LD	(RSFLAG),A	; 
+RWOPER:				; 
+	LD	HL,0		; 
+	ADD	HL,SP		; 
+	LD	SP,BIOSSTACK	; 
+	PUSH	HL		; 
+	LD	A,(SECSHF)	; 
+	LD	B,A		; 
+	LD	HL,(SECTOR)	; 
+RSECS:				; 
+	DEC	B		; 
+	jr	Z,SETSH		; 
+	SRL	H		; 
+	RR	L		; 
+	jr	RSECS		; 
+SETSH:				; 
+	LD	(SEKHST),HL	; 
+	LD	HL,HSTACT	; 
+	LD	A,(HL)		; 
+	LD	(HL),1		; 
+	OR	A		; 
+	jr	Z,FILHST	; 
+	LD	A,(SEKDSK)	; 
+	LD	HL,HSTDSK	; 
+	CP	(HL)		; 
+	jr	NZ,NOMATCH	; 
+	LD	HL,HSTTRK	; 
+	CALL	TRKCMP		; 
+	jr	NZ,NOMATCH	; 
+	LD	A,(SEKHST)	; 
+	LD	HL,HSTSEC	; 
+	CP	(HL)		; 
+	jr	NZ,NOMATCH	; 
+;
+;HER BURDE KODEN TIL MATCH V{RE
+	LD	A,(SEKHST+1)	; 
+	INC	HL		; 
+	CP	(HL)		; 
+	jr	Z,MATCH		; 
+NOMATCH:			; 
+	LD	A,(HSTWRT)	; 
+	OR	A		; 
+	CALL	NZ,WRITEHST	; 
+FILHST:				; 
+	LD	A,(SEKDSK)	; 
+	LD	(HSTDSK),A	; 
+	LD	HL,(TRACK)	; 
+	LD	(HSTTRK),HL	; 
+	LD	HL,(SEKHST)	; 
+	LD	(HSTSEC),HL	; 
+	LD	A,(RSFLAG)	; 
+	OR	A		; 
+	CALL	NZ,READHST	; 
+	XOR	A		; 
+	LD	(HSTWRT),A	; 
+MATCH:				; 
+	LD	A,(SECTOR)	; 
+	LD	HL,SECMSK	; 
+	AND	(HL)		; 
+	LD	L,A		; 
+	LD	H,0		; 
+	ADD	HL,HL		; 
+	ADD	HL,HL		; 
+	ADD	HL,HL		; 
+	ADD	HL,HL		; 
+	ADD	HL,HL		; 
+	ADD	HL,HL		; 
+	ADD	HL,HL		; 
+	LD	DE,HSTBUF	; 
+	ADD	HL,DE		; 
+	EX	DE,HL		; 
+	LD	HL,(DMAAREA)	; 
+	LD	BC,DEFDMAAREA	; 
+	EX	DE,HL		; 
+	LD	A,(READOP)	; 
+	OR	A		; 
+	jr	NZ,RWMOVE	; 
+	LD	A,1		; 
+	LD	(HSTWRT),A	; 
+	EX	DE,HL		; 
+RWMOVE:				; 
+	LDIR			; 
+	LD	A,(WRTYPE)	; 
+	CP	1		; 
+	LD	HL,ERFLAG	; 
+	LD	A,(HL)		; 
+	PUSH	AF		; 
+	OR	A		; 
+	jr	Z,LE4E8		; 
+	XOR	A		; 
+	LD	(HSTACT),A	; 
+LE4E8:				; 
+	POP	AF		; 
+	LD	(HL),0		; 
+	jr	NZ,XRWMOVE	; 
+	OR	A		; 
+	jr	NZ,XRWMOVE	; 
+	XOR	A		; 
+	LD	(HSTWRT),A	; 
+	CALL	WRITEHST	; 
+	LD	HL,ERFLAG	; 
+	LD	A,(HL)		; 
+	LD	(HL),0		; 
+XRWMOVE:			; 
+	POP	HL		; 
+	LD	SP,HL		; 
+	RET			; 
+TRKCMP:				; 
+	EX	DE,HL		; 
+	LD	HL,TRACK	; 
+	LD	A,(DE)		; 
+	CP	(HL)		; 
+	RET	NZ		; 
+	INC	DE		; 
+	INC	HL		; 
+	LD	A,(DE)		; 
+	CP	(HL)		; 
+	RET			; 
+WRITEHST:			; 
+	IF	UseHD
+	 LD	A,(HDSELECTED)	; 
+	 OR	A		; 
+	 JP	NZ, WrtFLOPPY	; -- Burde hedde WriteHD istedet
+	endif
+	CALL	CHKTRK		; 
+	JP	SECWR		; 
+READHST:			; 
+	LD	A,(UNAMSK)	; 
+	OR	A		; 
+	jr	NZ,RCHECK	; 
+	LD	(UNACNT),A	; 
+RCHECK:				; 
+	IF 	UseHD
+ 	 LD	A,(HDSELECTED)	; 
+	 OR	A		; 
+	 JP	NZ,READHD	; 
+	endif
+	CALL	CHKTRK		; 
+	JP	SECRD		; 
+CHKTRK:				; 
+	LD	A,(HSTSEC)	; 
+	LD	C,A		; 
+	LD	A,(EOTV)	; 
+	LD	B,A		; 
+	DEC	A		; 
+	CP	C		; 
+	LD	A,(HSTDSK)	; 
+	jr	NC,SET1		; 
+	OR	4		; 
+	LD	(CURDRIVE),A	; 
+	LD	A,C		; 
+	SUB	B		; 
+	LD	C,A		; 
+	jr	SET2		; 
+SET1:				; 
+	LD	(CURDRIVE),A	; 
+SET2:				; 
+	LD	B,0		; 
+	LD	HL,(TRANTAB)	; 
+	ADD	HL,BC		; 
+	LD	A,(HL)		; 
+	LD	(ACSEC),A	; 
+	LD	A,(HSTTRK)	; 
+	LD	(ACTRA),A	; 
+	LD	HL,HSTBUF	; 
+	LD	(DSKAD),HL	; 
+	LD	A,(HSTDSK)	; 
+	LD	HL,LSTDSK	; 
+	CP	(HL)		; 
+	jr	NZ,SEEKT	; 
+	LD	A,(HSTTRK)	; 
+	LD	HL,LSTTRK	; 
+	CP	(HL)		; 
+	jr	NZ,SEEKT	; 
+;
+;
+;HVAD SKER HER??
+	LD	A,(HSTTRK+1)	; 
+	INC	HL		; 
+	CP	(HL)		; 
+	RET	Z		; 
+SEEKT:				; 
+	LD	A,(HSTDSK)	; 
+	LD	(LSTDSK),A	; 
+	LD	HL,(HSTTRK)	; 
+	LD	(LSTTRK),HL	; 
+	CALL	CLFIT		; 
+	CALL	FDCSEEK		; 
+	CALL	WAITFIT		; 
+	LD	A,(CURDRIVE)	; 
+	AND	3		; 
+	ADD	A,' '		; 
+	CP	B		; 
+	RET	Z		; 
+RECA:				; 
+	CALL	CLFIT		; 
+	CALL	FDCRECALIBRA	; 
+	PUSH	BC		; 
+	CALL	WAITFIT		; 
+	CALL	FDCSEEK		; 
+	CALL	WAITFIT		; 
+	POP	BC		; 
+	RET			; 
+;
+;
+;
+; READ (TRACK, SECTOR) (MAX 10X)
+SECRD:				; 
+	LD	A,0AH		; 
+	LD	(REPET),A	; 
+RPSC:				; 
+	CALL	STARTMOTOR	; 
+	CALL	CLFIT		; 
+	LD	HL,(FORM)	; 
+	LD	C,(HL)		; 
+	INC	HL		; 
+	LD	B,(HL)		; 
+	INC	HL		; 
+	CALL	FLDMAW		; 
+	CALL	RDSEC		; 
+	CALL	WAITIT		; 
+	LD	C,0		; 
+SECCH:				; 
+	LD	HL,FDCRSTAB	; 
+	LD	A,(HL)		; 
+	AND	0F8H		; 
+	RET	Z		; 
+SCRP:				; 
+	AND	8	;FLOPPY OFFLINE?
+	jr	NZ,SCR1		; 
+	LD	A,(REPET)	; 
+	DEC	A		; 
+	LD	(REPET),A	; 
+	jr	Z,SCR1		; 
+	CP	5		; 
+	CALL	Z,RECA		; 
+	XOR	A		; 
+	CP	C		; 
+	jr	Z,RPSC		; 
+	jr	RPSW		; 
+SCR1:				; 
+	LD	A,C		; 
+	LD	(HSTACT),A	; 
+	LD	A,1		; 
+	LD	(ERFLAG),A	; 
+	RET			; 
+;
+;
+; WRITE(SECTOR,TRACK)
+;
+SECWR:				; 
+	LD	A,0AH		; 
+	LD	(REPET),A	; 
+RPSW:				; 
+	CALL	STARTMOTOR	; 
+	CALL	CLFIT		; 
+	LD	HL,(FORM)	; 
+	LD	C,(HL)		; 
+	INC	HL		; 
+	LD	B,(HL)		; 
+	INC	HL		; 
+	CALL	FLDMAR		; 
+	CALL	WRSEC		; 
+	CALL	WAITIT		; 
+	LD	C,1		; 
+	jr	SECCH		; 
+RDSEC:				; 
+	LD	A,6		; 
+	JP	FLCONTSET	; 
+WRSEC:				; 
+	LD	A,5		; 
+	JP	FLCONTSET	; 
+				;
+STARTMOTOR:			; PROCEDURE StartMotor; 
+	IN	A,(14H)		; 
+	AND	80H		; IF Minidiskette THEN
+	RET	Z		; BEGIN
+	DI			; 
+	LD	HL,(MOTORCOUNT)	;   IF MotorCount=0 THEN 
+	LD	A,L		;   BEGIN
+	OR	H		;     Port[20]:= 1;
+	LD	HL,(MOTOROFFTIME)
+	LD	(MOTORCOUNT),HL	;     Wait 1 sec.
+	EI			;   END;
+	RET	NZ		; 
+	LD	A,1		; 
+	OUT	(14H),A		; 
+	LD	HL,32H		;   MotorCount:= MotorOffTime;    
+	CALL	WAITHL		; END;
+	RET			; 
+
+STOPMOTOR:			; PROCEDURE Stopmotor;
+	IN	A,(14H)		; BEGIN
+	AND	80H		;   IF Minidiskette THEN
+	RET	Z		;     Port[20]:= 0;
+	LD	A,0		; 
+	OUT	(14H),A		; END;
+	RET			; 
+
+WAITHL:				; PROCEDURE WaitHL(Wait:HL);
+	LD	(WAITCOUNT),HL	; BEGIN
+WAITHL1:			;   Delay(Wait/50);  (* Interruptstyret *)
+	LD	HL,(WAITCOUNT)	; END;
+	LD	A,L		; 
+	OR	H		; 
+	jr	NZ,WAITHL1	; 
+	RET			; 
+
+DSKHOME:			; PROCEDURE DiskHome;
+	LD	A,(HSTWRT)	; 
+	OR	A		; IF NOT Pending Write THEN
+	JR	NZ,DSKHOME1	;   Set "No host active"
+	LD	(HSTACT),A	; 
+DSKHOME1:			; 
+	if	UseHD
+	 LD	A,(HDSELECTED)	; 
+	 AND	A		; 
+	 jr	Z,FLOPHOME	; 
+	 LD	A,(SEKDSK)	; 
+	 LD	(LSTDSK),A	; 
+	 LD	HL,(DPBLK)	; 
+	 LD	DE,0DH		; 
+	 ADD	HL,DE		; 
+	 LD	E,(HL)		; 
+	 INC	HL		; 
+	 LD	D,(HL)		; 
+	 LD	(LSTTRK),DE	; 
+	 CALL	LE880		; 
+	 CALL	LE8E3		; 
+	 RET	NC		; 
+	 CALL	WAITHD		; 
+LE686: 				; 
+	 IN	A,(67H)		; 
+	 AND	10H		; 
+	 jr	Z,LE686		; 
+	 RET			; 
+	else
+	 nop			; Adskiller DISKHOME fra FLOPHOME
+	endif
+	
+FLOPHOME:			; PROCEDURE Floppy Home;
+	CALL	STARTMOTOR	; BEGIN
+	LD	A,(SEKDSK)	;   CurrentDrive, LastDrive:= SeekDisk;
+	LD	(CURDRIVE),A	; 
+	LD	(LSTDSK),A	; 
+	XOR	A		;   LastTrack:= 0;
+	LD	(LSTTRK),A	;  
+	LD	(LSTTRK+1),A	; 
+	CALL	CLFIT		;  Clear Floppy interrupt and
+	CALL	FDCRECALIBRA	;  recalibrate drive;
+	CALL	WAITFIT		; 
+	RET			; END;
+
+WAITFDC:			; 
+	IN	A,(FDCdata)	;FLR02... Waits for FDC to be ready to receive
+	AND	0C0H		; a command.
+	CP	80H		; 
+	jr	NZ,WAITFDC	; 
+	RET			; 
+;
+WAITFDCDATA:			; 
+	IN	A,(FDCdata)	;FLR03
+	AND	0C0H		; 
+	CP	0C0H		; 
+	jr	NZ,WAITFDCDATA	; 
+	RET			; 
+
+FDCRECALIBRA:			; 
+	CALL	WAITFDC		;FLR04
+	LD	A,FDCrecal	; 
+	OUT	(FDCctrl),A	; 
+	CALL	WAITFDC		; 
+	LD	A,(CURDRIVE)	; 
+	AND	3		; 
+	OUT	(FDCctrl),A	; 
+	RET			; 
+;
+;SENSE DRIVE STATUS - NOT USED
+	CALL	WAITFDC		; 
+	LD	A,FDCsds	; 
+	OUT	(FDCctrl),A	; 
+	CALL	WAITFDC		; 
+	LD	A,(CURDRIVE)	; 
+	AND	3		; 
+	OUT	(FDCctrl),A	; 
+	CALL	WAITFDCDATA	; 
+	IN	A,(FDCctrl)	; 
+	LD	(FDCRSTAB),A	; 
+	RET			; 
+;
+FDCSENSEINT:			; 
+	CALL	WAITFDC		;FLR06
+	LD	A,FDCsis	; 
+	OUT	(FDCctrl),A	; 
+	CALL	WAITFDCDATA	; 
+	IN	A,(FDCctrl)	; 
+	LD	(FDCRSTAB),A	; 
+	AND	0C0H		; 
+	CP	80H		; 
+	RET	Z		; 
+	CALL	WAITFDCDATA	; 
+	IN	A,(FDCctrl)	; 
+	LD	(CURCYLINDER),A	; 
+	RET			; 
+FDCSEEK:			; 
+	CALL	WAITFDC		; 
+	LD	A,FDCseekcmd	; 
+	OUT	(FDCctrl),A	; 
+	CALL	WAITFDC		; 
+	LD	A,(CURDRIVE)	; 
+	AND	3		; 
+	OUT	(FDCctrl),A	; 
+	CALL	WAITFDC		; 
+	LD	A,(ACTRA)	; 
+	OUT	(FDCctrl),A	; 
+	RET			; 
+				;
+GETFDCSTATUS:			; 
+	LD	HL,FDCRSTAB	; 
+	LD	D,7		; 
+GETNEXTFDCST:			; 
+	CALL	WAITFDCDATA	; 
+	IN	A,(FDCctrl)	; 
+	LD	(HL),A		; 
+	INC	HL		; 
+	LD	A,4		; 
+FDCFINISH:			; 
+	DEC	A		; 
+	jr	NZ,FDCFINISH	; 
+	IN	A,(FDCdata)		; 
+	AND	10H		; 
+	RET	Z		; 
+	DEC	D		; 
+	jr	NZ,GETNEXTFDCST	; 
+	RET			; 
+CLFIT:				; 
+	DI			; 
+	XOR	A		; 
+	LD	(FDCRESOK),A	; 
+	EI			; 
+	RET			; 
+;
+;
+;WAIT FLOPPY INTERRUPT??
+WAITFIT:			; 
+	CALL	WAITIT		; 
+	LD	A,(FDCRSTAB)	; 
+	LD	B,A		; 
+	LD	A,(CURCYLINDER)	; 
+	LD	C,A		; 
+	CALL	CLFIT		; 
+	RET			; 
+WAITIT:				; 
+	LD	A,(FDCRESOK)	; 
+	OR	A		; 
+	jr	Z,WAITIT	; 
+	RET			; 
+FLDMAR:				; 
+	LD	A,00000101b	; Set channel 1 mask bit
+	DI			; 
+	OUT	(dmasinglebit),A ; 
+	LD	A,01001001b	; Single mode, Read transfer, Channel 1
+				; No autoinitialize, Increment address
+;
+;
+;FLDMASET.  STARTER DMA CONTROLLER.  DOC 1-39
+FLDMASET:			; 
+	OUT	(dmamode),A	; 
+	OUT	(dmaclrff),A	; 
+	LD	A,(DSKAD)	; 
+	OUT	(0F2H),A	; 
+	LD	A,(DSKAD1)	; 
+	OUT	(0F2H),A	; 
+	LD	A,C		; 
+	OUT	(0F3H),A	; 
+	LD	A,B		; 
+	OUT	(0F3H),A	; 
+	LD	A,1		; 
+	OUT	(0FAH),A	; 
+	EI			; 
+	RET			; 
+FLDMAW:				; 
+	LD	A,00000101b	; Set channel 1 bit 
+	DI			; 
+	OUT	(dmasinglebit),A ; 
+	LD	A,01000101b	; Single mode, Address increment, No autoinit,
+				; Write transfer, Channel 1
+	jr	FLDMASET	; 
+;
+;
+;
+; DOC ITT PAGE 1-42
+FLCONTSET:			; 
+	PUSH	AF		; 
+	DI			; 
+	CALL	WAITFDC		; 
+	POP	AF		; 
+	LD	B,(HL)		; 
+	INC	HL		; 
+	ADD	A,B		; 
+	OUT	(FDCctrl),A	; 
+	CALL	WAITFDC		; 
+	LD	A,(CURDRIVE)	; 
+	OUT	(FDCctrl),A	; 
+	CALL	WAITFDC		; 
+	LD	A,(ACTRA)	; 
+	OUT	(FDCctrl),A	; 
+	CALL	WAITFDC		; 
+	LD	A,(CURDRIVE)	; 
+	RRA			; 
+	RRA			; 
+	AND	3		; 
+	OUT	(FDCctrl),A	; 
+	CALL	WAITFDC		; 
+	LD	A,(ACSEC)	; 
+	OUT	(FDCctrl),A	; 
+	CALL	WAITFDC		; 
+	LD	A,(HL)		; 
+	INC	HL		; 
+	OUT	(FDCctrl),A	; 
+	CALL	WAITFDC		; 
+	LD	A,(HL)		; 
+	INC	HL		; 
+	OUT	(FDCctrl),A	; 
+	CALL	WAITFDC		; 
+	LD	A,(HL)		; 
+	OUT	(FDCctrl),A	; 
+	CALL	WAITFDC		; 
+	LD	A,(DTLV)	; 
+	OUT	(FDCctrl),A	; 
+	EI			; 
+	RET			;
+;-------------------------------- 
+INTFDC:				; PROCEDURE FloppyInterrupt; 
+	LD	(SAVESP),SP	; INTERRUPT;
+	LD	SP,INTSTACK	; 
+	PUSH	AF		;  
+	PUSH	BC		; 
+	PUSH	DE		; 
+	PUSH	HL		; 
+	LD	A,True		; BEGIN
+	LD	(FDCRESOK),A	;   FdcResOk:= TRUE;
+	LD	A,5		;   
+INTFDC2:			;   (* Wait a little for FDC to be ready *)
+	DEC	A		;  
+	jr	NZ,INTFDC2	; 
+	IN	A,(FDCdata)	; IF NOT(???) THEN
+	AND	10H		;   
+	jr	NZ,FDCGETRES	; 
+	CALL	FDCSENSEINT	; 
+	jr	DONEINTFDC	; 
+FDCGETRES:			; 
+	CALL	GETFDCSTATUS	; 
+DONEINTFDC:			; 
+	POP	HL		; 
+	POP	DE		; 
+	POP	BC		; 
+	POP	AF		; 
+	LD	SP,(SAVESP)	; 
+	EI			; 
+	RETI			; 
+
+	
+	if	UseHD
+;-----------------------------------------------------------------
+WRTFLOPPY:			; 
+	 CALL	LE83B		; 
+	 CALL	NC,LE880	; 
+	 CALL	LE901		; 
+	 RET	NC		; 
+	 LD	HL,(FORM)	; 
+	 LD	C,(HL)		; 
+	 INC	HL		; 
+	 LD	B,(HL)		; 
+	 CALL	LE920		; 
+	 LD	A,'0'		; 
+	 OUT	(67H),A		; 
+	 CALL	WAITHD		; 
+	 RET			; 
+READHD:	 			; 
+	 CALL	LE83B		; 
+	 CALL	NC,LE880	; 
+	 CALL	LE901		; 
+	 RET	NC		; 
+	 LD	HL,(FORM)	; 
+	 LD	C,(HL)		; 
+	 INC	HL		; 
+	 LD	B,(HL)		; 
+	 CALL	LE916		; 
+	 LD	A,'('		; 
+	 OUT	(67H),A		; 
+	 CALL	WAITHD		; 
+	 RET			; 
+LE83B:	 			; 
+	 LD	HL,HSTBUF	; 
+	 LD	(DSKAD),HL	; 
+	 LD	A,(HSTDSK)	; 
+	LD	HL,LSTDSK	; 
+	CP	(HL)		; 
+	jr	NZ,LE85F	; 
+	LD	A,(HSTTRK)	; 
+	LD	HL,LSTTRK	; 
+	CP	(HL)		; 
+	jr	NZ,LE85F	; 
+	LD	A,(HSTTRK+1)	; 
+	INC	HL		; 
+	CP	(HL)		; 
+	jr	NZ,LE85F	; 
+	AND	A		; 
+	RET			; 
+LE85F:				; 
+	LD	A,(HSTDSK)	; 
+	LD	(LSTDSK),A	; 
+	LD	HL,(HSTTRK)	; 
+	LD	(LSTTRK),HL	; 
+	CALL	LE880		; 
+	CALL	LE8E3		; 
+	jr	NC,LE87E	; 
+	CALL	WAITHD		; 
+LE877:				; 
+	IN	A,(67H)		; 
+	AND	10H		; 
+	jr	Z,LE877		; 
+LE87E:				; 
+	SCF			; 
+	RET			; 
+LE880:				; 
+	LD	HL,(FORM)	; 
+	LD	DE,-1		; 
+	EX	DE,HL		; 
+	ADD	HL,DE		; 
+	XOR	A		; 
+	LD	C,(HL)		; 
+	LD	B,0		; 
+	LD	HL,(HSTSEC)	; 
+LE88F:				; 
+	AND	A		; 
+	SBC	HL,BC		; 
+	jr	C,LE899		; 
+	INC	A		; 
+	jr	LE88F		; 
+LE899:				; 
+	ADD	HL,BC		; 
+	PUSH	AF		; 
+	LD	A,L		; 
+	OUT	(63H),A		; 
+	LD	A,(LSTDSK)	; 
+	LD	C,0		; 
+	LD	HL,MAXFLOPPY	; 
+	SUB	(HL)		; 
+	LD	HL,LF336	; 
+	CP	(HL)		; 
+	jr	C,LE8C1		; 
+	SUB	(HL)		; 
+	INC	C		; 
+	LD	HL,LF337	; 
+	CP	(HL)		; 
+	jr	C,LE8C1		; 
+	SUB	(HL)		; 
+	INC	C		; 
+	LD	HL,LF338	; 
+	CP	(HL)		; 
+	jr	C,LE8C1		; 
+	INC	C		; 
+LE8C1:				; 
+	SLA	C		; 
+	SLA	C		; 
+	SLA	C		; 
+	POP	AF		; 
+	OR	C		; 
+	LD	HL,BDOS		; 
+	ADD	HL,DE		; 
+	OR	(HL)		; 
+	OUT	(66H),A		; 
+	LD	HL,(LSTTRK)	; 
+	LD	A,L		; 
+	OUT	(64H),A		; 
+	LD	A,H		; 
+	AND	3		; 
+	OUT	(65H),A		; 
+	LD	HL,6		; 
+	ADD	HL,DE		; 
+	LD	A,(HL)		; 
+	OUT	(61H),A		; 
+	RET			; 
+LE8E3:				; 
+	LD	HL,(FORM)	; 
+	LD	DE,BDOS		; 
+	ADD	HL,DE		; 
+	LD	A,70H		; 
+	OR	(HL)		; 
+	CALL	LE901		; 
+	RET	NC		; 
+	OUT	(67H),A		; 
+	SCF			; 
+	RET			; 
+WAITHD:				; 
+	LD	A,(HDREADY)	; 
+	OR	A		; 
+	jr	Z,WAITHD	; 
+	XOR	A		; 
+	LD	(HDREADY),A	; 
+	RET			; 
+LE901:				; 
+	PUSH	AF		; 
+	IN	A,(67H)		; 
+	AND	'P'		; 
+	CP	'P'		; 
+	jr	Z,LE913		; 
+	LD	A,0BBH		; 
+	LD	(ERFLAG),A	; 
+	POP	AF		; 
+	AND	A		; 
+	RET			; 
+LE913:				; 
+	POP	AF		; 
+	SCF			; 
+	RET			; 
+LE916:				; 
+	LD	A,00000100b	; Set channel 0 bit
+	DI			; 
+	OUT	(dmasinglebit),A; 
+	LD	A,01000100b	; Channel 0, Write, No autoinit, Inc address
+	jr	LE927		; Single
+LE920:				; 
+	LD	A,00000100b	; Set channel 0 bit
+	DI			; 
+	OUT	(dmasinglebit),A ; 
+	LD	A,01001000b	; Channel 0, Read, No autoinit, Incaddress
+LE927:				; Single
+	OUT	(dmamode),A	; 
+	OUT	(dmaclrff),A	; 
+	LD	A,(DSKAD)	; 
+	OUT	(0F0H),A	; 
+	LD	A,(DSKAD1)	; 
+	OUT	(0F0H),A	; 
+	LD	A,C		; 
+	OUT	(0F1H),A	; 
+	LD	A,B		; 
+	OUT	(0F1H),A	; 
+	LD	A,0		; 
+	OUT	(dmasinglebit),A ; 
+	EI			; 
+	RET			; 
+OUT66:				; 
+	OUT	(66H),A		; 
+OUT6X:				; 
+	XOR	A		; 
+	OUT	(61H),A		; 
+	OUT	(62H),A		; 
+	OUT	(63H),A		; 
+	OUT	(64H),A		; 
+	OUT	(65H),A		; 
+	LD	A,10H		; 
+	OR	B		; 
+	OUT	(67H),A		; 
+	RET			; 
+LE954:				; 
+	OUT	(66H),A		; 
+	LD	A,B		; 
+	OUT	(61H),A		; 
+	LD	A,C		; 
+	OUT	(62H),A		; 
+	LD	A,E		; 
+	OUT	(64H),A		; 
+	LD	A,D		; 
+	OUT	(65H),A		; 
+	LD	HL,(DMAAREA)	; 
+	LD	(DSKAD),HL	; 
+	CALL	LE901		; 
+	jr	NC,LE980	; 
+	LD	BC,01FFH	; 
+	CALL	LE920		; 
+	LD	A,'P'		; 
+	OUT	(67H),A		; 
+	CALL	WAITHD		; 
+	LD	A,(ERFLAG)	; 
+	AND	A		; 
+	RET	Z		; 
+LE980:				; 
+	XOR	A		; 
+	LD	(ERFLAG),A	; 
+	LD	A,1		; 
+	RET			; 
+INTHD:				; 
+	LD	(SAVESP),SP	; 
+	LD	SP,INTSTACK	; 
+	PUSH	AF		; 
+	PUSH	BC		; 
+	PUSH	DE		; 
+	PUSH	HL		; 
+	LD	A,True		; 
+	LD	(HDREADY),A	; 
+	IN	A,(67H)		; 
+	LD	(HDSTATUS),A	; 
+	AND	1		; 
+	jr	Z,LE9B2		; 
+	IN	A,(61H)		; 
+	LD	(LF348),A	; 
+	LD	HL,(LF349)	; 
+	INC	HL		; 
+	LD	(LF349),HL	; 
+	LD	A,0BBH		; 
+	LD	(ERFLAG),A	; 
+LE9B2:				; 
+	POP	HL		; 
+	POP	DE		; 
+	POP	BC		; 
+	POP	AF		; 
+	LD	SP,(SAVESP)	; 
+	EI			; 
+	RETI			; 
+	endif	; Af harddisk rutiner  --- Starter med label WRTFLOPPY
+;
+;
+TRAN0:				; IBM SS/SD skew
+;	skew	26, 6, 1	;
+	DB	01H,07H,0DH,13H,19H,05H,0BH	;
+	DB	11H,17H,03H,09H,0FH,15H,02H
+	DB	08H,0EH,14H,1AH,06H,0CH,12H
+	DB	18H,04H,0AH,10H,16H
+TRAN8:				; DS/SD skew (track 0, head 1)
+;	skew	15, 4, 1	;
+	DB	01H,05H,09H,0DH,02H,06H,0AH
+	DB	0EH,03H,07H,0BH,0FH,04H,08H
+	DB	0CH		; 
+TRAN16:				; 		; 5" skew
+;	skew	9, 2, 1		;
+	DB	01H,03H,05H,07H,09H,02H,04H
+	DB	06H,08H		; 
+TRAN24:				;
+;	skew	26, 1, 1	;
+ 
+	DB	01H,02H,03H,04H,05H,06H,07H
+	DB	08H,09H,0AH,0BH,0CH,0DH,0EH
+	DB	0FH,10H,11H,12H,13H,14H,15H
+	DB	16H,17H,18H,19H,1AH
+
+;
+;DPB!! (SPT.W, BSH.B,BLM.B,EXM.B,DSM.W,AL.W,CKS.W,OFF.W,PSH.B,PHM.B)
+;
+DPBLK0:				; IBM 8" SS/SD 
+;	dpb	128, 26, 77, 1024, 64, 2
+
+	DB	1AH,00H,03H,07H,00H,0F2H,00H
+	DB	3FH,00H,0C0H,00H,10H,00H,02H
+	DB	00H		; 
+
+;
+DPBLK8:				; 
+;	dpb	128, 120, 62, 2048, 128, 2 ; Denne virker ikke!!
+
+	DB	78H,00H,04H,0FH,00H
+	dw	disk8size
+	DB	7FH,00H,0C0H,00H,20H,00H,02H
+	DB	00H		; 
+
+;
+DPBXX1:				; 
+;	dpb	128, 26, 75, 1024, 64, 0
+;
+	DB	1AH,00H,03H,07H,00H,0F2H,00H
+	DB	3FH,00H,0C0H,00H,10H,00H,00H
+	DB	00H		; 
+
+;
+DPBLK24:			; Track 0 side 1.  Total format 944 kb
+;	***dpb	128, 104, 73, 2048, 128, 0
+
+	DB	68H,00H,04H,0FH,00H,0D7H,01H
+	DB	7FH,00H,0C0H,00H,20H,00H,00H
+	DB	00H		; 
+;
+;
+DPBXX3:				; 
+;	***dpb	128, 384, 21, 2048, 128, 3, 0	; 900 kb C:
+
+	DB	80H,01H,04H,0FH,00H
+	dw	disk8size
+	DB	7FH,00H,0C0H,00H,00H,00H,03H
+	DB	00H		; 
+
+LEA54:				; 
+;	** dpb	128, 384, 9, 2048, 128, 3, 0	; 270 kb C:
+	DB	80H,01H,04H,0FH,01H,86H,00H
+	DB	7FH,00H,0C0H,00H,00H,00H,03H
+	DB	00H		; 
+LEA63:				; 
+;	dpb	128, 384, 68, 4096, 512, 27, 0	; 20 Mb harddisk
+	DB	80H,01H,05H,1FH,01H,0EBH,01H
+	DB	0FFH,01H,0F0H,00H,00H,00H,1BH
+	DB	00H		; 
+LEA72:				; 
+;	*** dpb	128, 384, 68, 8192, 512, 27, 0	;
+	DB	80H,01H,06H,3FH,03H,0EBH,01H
+	DB	0FFH,01H,0C0H,00H,00H,00H,1BH
+	DB	00H		; 
+LEA81:				; 
+;	*** dpb	128, 384, 68, 8192, 512, 27, 0	;
+
+	DB	80H,01H,07H,7FH,07H,0EEH,01H
+	DB	0FFH,01H,80H,00H,00H,00H,1BH
+	DB	00H		; 
+LEA90:				; 
+
+
+	DB	02H,00H,02H,00H,03H,00H,1BH
+	DB	00H		; 
+LEA98:				; 
+	DB	00H,00H,00H,00H,00H,00H,00H
+	DB	00H		; 
+;
+; DPH's
+;
+FSPAR0:				; 
+	DW	DPBLK0		; 
+	DB	08H,1AH,00H,00H,01H
+	DW	TRAN0		; 
+	DB	80H		; 
+	DS	0006H		; 
+FSPAR8:				; 
+	DW	DPBLK8		; 
+	DB	10H,78H,00H,03H,03H
+	DW	TRAN8		; 
+	DB	0FFH		; 
+	DS	0006H		; 
+FSPAR16:			; 
+	DW	DPBLK0		; 
+	DB	08H,1AH,00H,00H,01H
+	DW	TRAN24		; 
+	DB	80H		; 
+	DS	0006H		; 
+FSPAR24:			; 
+	DW	DPBLK24		; 
+	DB	08H,68H,00H,01H,02H
+	DW	TRAN24		; 
+	DB	0FFH		; 
+	DS	0006H		; 
+FSPAR32:			; 
+	DW	DPBXX3		; 
+	DB	10H,80H,01H,03H,03H
+	DW	0		; 
+	DB	00H		; 
+	DS	0006H		; 
+FSPAR40:			; 
+	DW	LEA54		; 
+	DB	10H,80H,01H,03H,03H
+	DW	0		; 
+	DB	00H		; 
+	DS	0006H		; 
+FSPAR48:			; 
+	DW	LEA63		; 
+	DB	20H,80H,01H,03H,03H
+	DW	0		; 
+	DB	00H		; 
+	DS	0006H		; 
+FSPAR56:			; 
+	DW	LEA72		; 
+	DB	40H,80H,01H,03H,03H
+	DW	0		; 
+	DB	00H		; 
+	DS	0006H		; 
+FSPAR64:			; 
+	DW	LEA81		; 
+	DB	80H,80H,01H,03H,03H
+	DW	0		; 
+	DB	00H		; 
+	DS	0006H		; 
+;
+;
+;
+;SEE ITT3290 CP/M BIOS PAGE 1-9
+FDCPARMS:			; 
+	DB	1AH		; 
+FDF1:				; 
+	DB	7FH,00H,00H,00H,1AH,07H,4DH
+	DB	1EH		; 
+FDF2:				; 
+	DB	0FFH,01H,40H,02H,0FH,1BH,4DH
+	DB	1AH		; 
+FDF3:				; 
+	DB	7FH,00H,00H,00H,1AH,07H,4DH
+	DB	34H		; 
+FDF4:				; 
+	DB	0FFH,00H,40H,01H,1AH,0EH,4DH
+	DB	10H		; 
+FDF5:				; 
+	DB	0FFH,01H,18H,00H,00H,20H,00H
+	DB	10H		; 
+FDF7:				; 
+	DB	0FFH,01H,18H,00H,00H,20H,00H
+	DB	10H		; 
+FDF8:				; 
+	DB	0FFH,01H,29H,00H,00H,20H,00H
+	DB	10H		; 
+FDF9:				; 
+	DB	0FFH,01H,53H,00H,00H,20H,00H
+	DB	10H
+FDF10:	DB	0FFH,01H,0A6H,00H,00H,20H
+	DB	00H		; 
+DPHBASE:				; 
+	DW	0, 0, 0, 0, DIRBUF, DPBLK8, CSV0, ALV0	; 
+	DW	0, 0, 0, 0, DIRBUF, DPBLK8, CSV1, ALV1	; 
+	 DW	0, 0, 0, 0, DIRBUF
+C$DPB:			; 
+	 DW	LEA54		; (* 8" eller 5" *)
+
+	IFE	UseHD
+	 dw	0, alv0		; (* overlap drev a: *)
+	else
+	 DW	0, LF1CF	; 
+;
+;DISK NR 3-6
+	 DW	0, 0, 0, 0, DIRBUF, LEA81, 0, LF216	; 
+	 DW	0, 0, 0, 0, DIRBUF, LEA72, 0, LF255	; 
+	 DW	0, 0, 0, 0, DIRBUF, LEA72, 0, LF294	; 
+	 DW	0, 0, 0, 0, DIRBUF, LEA63, 0, LF2D3	; 
+	endif
+

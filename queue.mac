@@ -1,0 +1,124 @@
+	subttl	QUEUE.MAC
+;
+; QUEUE.MAC -- Thorbj|rn 910203
+;
+; Dette modul indeholder definition af ADT Queue.
+;
+; Registrene A, BC, DE, HL benyttes af adt'en.  Index pointeren IX skal
+; s{ttes inden indgang, men kun f|rste gang.  Queue {ndrer ikke IX.
+;
+; En queue defineres med NAVN:  QUEUE  Queuesize
+; som resulterer i pseudodefinitionen
+; NAVN: RECORD
+;         Size: INTEGER= QueueSize;
+;         First: INTEGER= 0;
+;         Free:  INTEGER= 0;
+;         Data: ARRAY[0..QueueSize-1] OF BYTE;
+;       END;
+;
+; PROCEDURER:  (Disse har INGEN check - pas p} )
+; ===========
+; En byte inds{ttes i queue med 
+;   LD   A,<value>
+;   LD   IX,<QueueNavn>
+;   CALL Q$PUT
+;
+; og en byte hentes igen med
+;
+;   LD   IX, <QueueNavn>
+;   CALL Q$GET
+;   LD   (xxxx),A
+;
+; FUNCTIONER:
+; ===========
+;   LD   IX, <queueNavn>
+;   CALL Q$EMPTY
+;   JP   NZ, QUEUENOTEMPTY
+;
+;   LD   IX, <QueueNavn>
+;   CALL Q$FULL
+;   JP   NZ, QUEUENOTFULL
+;
+; Z=1 hvis funktionen lykkedes (eller er som forventet), og Z=0 ved fejl.
+;
+;
+Queue	MACRO	queuesize
+	DW	queuesize, 0, 0
+	DS	QueueSize
+	ENDM
+
+Q$GetFF::	; Returnerer med HL=FIRST, DE=FREE; 
+	ld	l,(ix+2)	;
+	ld	h,(ix+3)	; Hl:= Queue.First
+	ld	e,(ix+4)	; DE:= Queue.Free;
+	ld	d,(ix+5)	;
+	RET			;
+
+Q$Rot::				; FUNCTION Q$Rot(Value: HL): INTEGER;
+				; (* HL:= (HL+1) MOD Queue.SIZE (*IX*)
+				;  hl:= Value
+	ld	e,(ix+0)	;
+	ld	d,(ix+1)	;  de:= Queue.Size;
+	inc	hl		;  value:= value+1
+	call	Q$CompareDEHL	; if BC=DE THEN (* Udenfor 0..Queue.Size-1 *)
+	ret	nz		;
+	ld	hl,0		;  Value:= 0;
+	ret			;END;
+	
+
+Q$EMPTY::			; True if First=Free
+	call	Q$GetFF		;
+	jr	Q$CompareDEHL	;
+
+Q$FULL::			; True if first=rot(free)
+	call	Q$GetFF		;
+	push	hl		; (Save)
+	ex	de, hl		; (Parameter)
+	call	Q$Rot		;
+	pop	de		; (restore)  (A short cut )
+;;	jr	Q$CompareDEHL	; **** FALL THROUGH
+
+Q$CompareDEHL::			; FUNCTION Q$Compare: BOOLEAN;
+	ld	a,l		; BEGIN
+	cp	e		;   Q$Compare:= hl=de;
+	ret	nz		;
+	ld	a,h		;
+	cp	d		; END;
+	ret			;
+
+Q$PUT::				; PROCEDIRE Q$Put(A:BYTE; IX: ^);
+	call	q$GetFF		; BEGIN
+	push    ix              ;
+	pop     bc              ;
+	ld	hl, 6		;
+	add     hl, bc		;
+	add	hl, de		;   Data[Free]:= a;
+	ld	(hl),a		;
+				;
+	ex	de, hl		;   Free:= Rot(Free);
+	call	q$rot		;
+	ld	(ix+4),l	;
+	ld	(ix+5),h	;
+	ret			; END;
+
+
+Q$GET::				; FUNCTION Q$Get(ix:^): BYTE;
+	call	q$GetFF		; BEGIN
+	push	ix		;
+	pop	bc		;
+	ex	de, hl		;   (* Gem first i DE*)
+	ld	hl, 6		;
+	add     hl, de		;
+	add	hl, bc		;   a:= Data[First];
+	ld	a,(hl)  	;
+	push    af              ;
+				;
+	ex	de, hl		;   First:= Rot(First);
+	call	q$rot		;
+	ld	(ix+2),l	;
+	ld	(ix+3),h	;
+	pop     af              ;
+	ret			; END;
+
+;	end of include
+

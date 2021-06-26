@@ -1,0 +1,68 @@
+;-----------------------------------------------------------
+;
+; Keyboard interrupt server modul.  MEGET udvidet siden den 
+; oprindelige RcBIOS
+;
+;-----------------------------------------------------------
+	subttl	File: KEYINT.MAC
+keyserver::	
+	dw	ks$1		; Indeholder *addressen* p} rutinen der skal
+				; behandle tastetrykket.
+
+KEYINTERRUPT:			; PROCEDURE KeyInterrupt;
+	LD	(SAVESP),SP	; BEGIN
+	LD	SP,INTSTACK	;   (* Enter interupt *)
+	PUSH	AF		;   
+	push	bc		;
+	push	de		;
+	push	hl		;
+	push	ix		;
+				;
+	IN	A,(10H)		;  (* Here is the SCAN code *)
+	LD	C,A		;    Read character and save it 
+	ld	hl,(keyserver)	; (* Jump to current keyboard interrupt
+	jp	(hl)		;    server. Scan code in A & C *)
+
+
+xsk$kbdint::			; Exit point to use when transferring
+				; keyserver rights to other routine.
+	ld	(keyserver), hl
+x$kbdint::			; Exit routine for keyboard interrupt.
+				;
+	pop	ix		;
+	pop	hl		;
+	pop	de		;
+	pop	bc		;
+	pop	af		;
+	ld	sp,(savesp)	;  (* M}ske en god ide :( *)
+	ei			;  (* exit interrupt *)
+	RETI			; END;
+
+ks$1::				; Keyboard server #1!
+				; -------------------
+
+	cp	SysReqkey	;    Is it the System Request key?
+	jr	z, setks$2
+
+
+	ld	ix, kbdbuf	;  IF NOT q$full(kbdbuf) THEN
+	push	bc		; (* Save bc over q$full call *)
+	call	q$full		;
+	pop	bc		;  
+	jr	z, x$kbdint	; 
+				;
+	LD	HL,KEYINTABLE	;    q$put(kbdbuf, translate(charvalue));
+	CALL	TRANSLATE	;  
+				;
+	call	q$put		;
+	jr	x$kbdint	; bye bye.
+
+setks$2::
+	ld	hl, ks$2	; Set keyboard server to #2
+	jr	xsk$kbdint	;
+
+ks$2::	ld	(0f800h+2000+20), a	; show keyscancode
+	ld	hl, ks$1	;
+	jr	xsk$kbdint	;
+
+

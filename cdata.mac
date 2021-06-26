@@ -1,0 +1,165 @@
+	subttl	File: CDATA.MAC
+;
+; Datadefinitioner til Cbios.  Flyttet tilbage i kildeteksten for
+; at garantere at de ligger s} taet op af koden som muligt. 910302
+;
+; Nuv{rende placering er lige bag interrupt koden
+;
+; ;.phase	0ee80h+1a4h	;
+;
+BUFFERSTART::	DB	0		; 
+HSTBUF::	DS	512		; 512 bytes deblock buffer
+DIRBUF::	DS	128		; 
+ALV0::		DS	0047H		; 1136 kb a 2 kb/block med 8 bit/byte
+CSV0::		DS	0020H		; 128 directory entries   
+ALV1::		DS	0047H		; 1136 ... 
+CSV1::		DS	0020H		; 128 ...
+
+		if	UseHD
+					; DREV A: OG B: er pr 910327
+LF1CF::		DS	0047H		; MODIFICERET TIL AT INDEHOLDE 72 SPOR
+LF216::		DS	003FH		; = 1,08 Mb istedet for 0.9 Mb
+LF255::		DS	003FH		; 
+LF294::		DS	003FH		; 
+LF2D3::		DS	003FH		; 
+		endif
+SEKDSK::	DB	0		; 
+TRACK::		DW	0		; 
+SECTOR::	DW	0		; 
+HSTDSK::	DB	0		; 
+HSTTRK::	DW	0		; 
+HSTSEC::	DW	0		; 
+LSTDSK::	DB	0		; 
+LSTTRK::	DW	0		; 
+SEKHST::	DW	0		; 
+HSTACT::	DB	0		; 
+HSTWRT::	DB	0		; 
+;;
+; DEBLOCKING INFORMATION??
+UNACNT::	DB	0		; 
+UNADSK::	DB	0		; 
+UNATRK::	DW	0		; 
+UNASEC::	DW	0		; 
+UNAMSK::	DB	0		; 
+ERFLAG::	DB	0		; 
+RSFLAG::	DB	0		; 
+READOP::	DB	0		; 
+WRTYPE::	DB	0		; 
+DMAAREA::	DW	0		; 
+FORM::		DW	0		; 
+;
+;
+;CURRENT FORMAT
+CFORM::		DB	0H		; 
+EOTV::		DB	0		;SECTORS PR TRACK
+DRNO::		DB	0		; 
+MAXFLOPPY::	DB	0		; 
+LF336::		DB	0		; 
+LF337::		DB	0		; 
+LF338::		DB	0		; 
+CURDRIVE::	DB	0		; 
+DSKAD::		DB	0		; 
+DSKAD1::	DB	0		; 
+ACTRA::		DB	0		; 
+ACSEC::		DB	0		; 
+REPET::		DB	0		; 
+;
+;
+;
+;7:FDC READY,6:DIRECTION,5:NON-DMA,4:DOING COMMAND,3..0:DRIVE SEEK
+;
+FDCRsTab::	DB	0		; 
+CURCYLINDER::	DB	0,0,0,0,0,0,0	;
+					;26H,41H,74H,79H,70H,65H,0DH
+HDSTATUS::	DB	0		; 
+LF348::		DB	0		; 
+LF349::		DW	0		; 
+SAVESP::	DW	0		; 
+HDREADY::	DB	0		; 
+FLOPPYBOOT::	DB	0		; 
+FDCRESOK::	DB	0		; 
+FIRSTLOAD::	DB	0		; 
+					;
+DPBLK::		DB	0		; 00 Disk blok som bliver sat af seldisk. 
+DPBLK1::	DB	0		; 01 Detaljerne er ikke udarbejdet endnu.
+CPMRBP::	DB	0		; 02
+LF354::		DW	0		; 04 SecMsk:= HostSize/128
+SECMSK::	DB	0		; 05
+SECSHF::	DB	0		; 06 Den har st|rrelsen 10h bytes
+TRANTAB::	DW	0		; 08 s} fejlen blev rettet ved at allokere
+DTLV::		DB	0		; 09 LIDT mere plads.
+HDSELECTED::	DB	0		; 10
+		dw	0,0,0		; 16
+	
+	db	0		; -- bare for at v{re HELT sikker.
+
+XCOOR::		DB	0	; Nuv{rende xkoordinat
+ScrLineBase::	DW	0	; Antal tegn nuv.linie starter p} (ikke ^Screen)
+YCOOR::		DB	0	; Nuv{rende Ykoordinat
+CURLINESTART::	DW	0	; Word der peger p} starten af nuv. linie
+CHARSYET::	DB	0	; Antal tegn manglende i Gotoxy sekvens
+XCOORW::	DW	0	; Word der peger p} nuv{rende cursorposition
+COUTCHAR::	DB	0	; Tegnet der |nskes udskrevet
+FB$ACTI::	DB	0	; 0= Ikke aktiv, 1= Forgrund, 2=Baggrund
+CB$POS::	DW	0	; 
+SAVEXYPOS::	DB	0	; Til at gemme f|rste koordinat i Gotoxy med
+EXITCOUNT::	DW	0	; Antal ticks f|r EXJP kaldes.
+MOTORCOUNT::	DW	0	; Ticks f|r mini motoren slukkes. 
+WAITCOUNT::	DW	0	; Antal tick bios |nsker at vente endnu
+;
+EXJP::		DB	0	; Jump instruktionen til EXJPaddr
+;
+;
+; EXJPADDR SHOULD BE A WORD INSTEAD OF A BYTE??? Overlapper MOTOROFFTIME.
+; rettet 910302
+EXJPADDR::	Dw	0	; 
+MOTOROFFTIME::	DW	0	; Initv{rdien for ticks f|r motoren slukker
+
+
+FB$BASE::	 			; Skal vaere defineret til INIT
+		if	fb$ena
+		 DB	'e'		; 
+FB$POS1::	 DB	0DH,'08&E&A',0DH,'0'
+FB$LINE::	 DB	'9END&F',0DH,'10M{ngdes grund&A '
+		 DB	'er for stor',0DH,'11Filelementer '
+		 DB	'm}&X v{re &G',0DH,'12&U s&Jl{ngde'
+		 DB	0DH,'13&U grund&A for delinterval'
+		 DB	0DH,'14''..''&F',0DH,'15&Yintervalgr{'
+		 DB	'nser',0DH,'16\vre gr{nse st|rre '
+		 DB	'end nedre',0DH,'17&Esimpel '
+		 DB	'&A',0DH,'18Simpel &A&F',0DH
+		 DB	'19Ukendt pointer&A i &Adefinitio'
+LF5EF::		 DB	'n'		; 
+CB$LASTLI::	 DB	'(er)',0DH,'20U'
+FB$SECO::	 DB	'&'		; 
+FB$LAST::	 DB	'D'
+		endif
+
+		db	'## end of bios ##'
+		.dephase
+;--------------------------
+		
+		.phase	0f620h
+INTSTACK::				; 0f620h
+;--------------------------
+		DS	060h
+BIOSSTACK::	
+
+KEYOUTTABLE::	DS	080H		; (Kun 7-bit ascii i uddata )
+
+KEYINTABLE::	DS	0100H		; 
+		.dephase
+	page			;
+;
+;
+;ORG $FFD0 - HER laa DIVERSE SYSTEMVARIABLE -- efter fysisk sk{rmhukommelse
+;Et tick varer 20 ms, dvs 50 interrupts pr sekund.  Flyttet 910302
+;
+		;;.phase	0FFD0h
+;STOPDMAFF::	DB	0FFh	; En FF til at stoppe DMA overf|rsel med
+
+CLOCKLOW	EQU	0FFFCh	; 32 bits t{ller for CLOCK
+CLOCKHIGH	EQU	0FFFEh	; 
+
+		END	
+

@@ -1,0 +1,24 @@
+;
+; CGLOBAL.MAC -- indeholder extern definitioner til CDATA.MAC
+;
+	.request	CDATA
+
+ ext	bufferstart, hstbuf, dirbuf, alv0, csv0, alv1, csv1,lf1cf, lf216
+ ext	lf255, lf294, lf2d3, sekdsk, sector, track, hstdsk, hsttrk, hstsec
+ ext	lstdsk, lsttrk, sekhst, hstact, hstwrt, unacnt, unadsk, unatrk, unasec
+ ext	unamsk, erflag, rsflag, readop, wrtype, dmaarea, form, cform
+ ext	eotv, drno, maxfloppy, lf336, lf337, lf338, curdrive, dskad, dskad1
+ ext	actra, acsec, repet, FDCRsTab, Curcylinder, hdstatus, lf348, lf349
+ ext	savesp, hdready, floppyboot, fdcresok, firstload, dpblk, dpblk1
+ ext	cpmrbp, lf354, secmsk, secshf, trantab, dtlv, hdselected
+
+ ext	fb$base, fb$pos1, fb$line, lf5ef, cb$lastli, fb$seco, fb$last
+
+ ext	intstack, biosstack, keyouttable, keyintable
+
+ ext	stopdmaff, xcoor, scrlinebase, ycoor, curlinestart, charsyet
+ ext	xcoorw, coutchar, fb$acti, cb$pos, savexypos, exitcount
+ ext	motorcount, waitcount, exjp, exjpaddr, motorofftime
+ ext	clocklow, clockhigh
+
+

@@ -1,0 +1,27 @@
+
+;;	CHEAD.MAC
+
+	aseg
+	org	100h
+	ld	de, nogoodmsg
+	ld	c, 10
+	call	5
+	ret			; to ccp
+	
+nogoodmsg:
+	db	13,10
+	db	'This file contains a working BIOS for the Rc700 system',13,10
+	db	13,10
+	db	'Use the PUTBIOS utility to enter it to the system tracks.'
+	db	13,10,13,10
+	db	'$'
+	
+	
+	org	200h
+	
+
+
+
+
+
+	

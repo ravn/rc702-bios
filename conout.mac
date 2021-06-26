@@ -1,0 +1,763 @@
+;-----------------------------------------------------------------------
+; 
+; Character output rutiner.
+;
+; Disse tager sig af al sk{rmstyringen
+; Sidste linie er kendetegnet med strengen "END OF CRT"
+;
+; Fore/Background er kun inkluderet hvis FB$ena er sand! 910302
+; Screenlength defineres til 25 1/2 linie hvis CRT26 er defineret!
+;-----------------------------------------------------------------------
+; 
+; Sk{rm omr}de.  Ligger fra $F800..$FFD0
+;
+; +-----1--------+
+; !34            !
+; !5             !
+; 2              !
+; !             9!
+; !8           76!
+; +--------------+
+;
+;-----------------------------------------------------------------------
+
+		subttl	File: CONOUT.MAC
+ScrLineLen	EQU	80			; 1)
+ScrScreenLen	EQU	25			; 2)
+
+SCREENBASE	EQU	0F800h			; 3)
+ScrPos2		EQU	ScreenBase+1		; 4)
+SCREENLINE2	EQU	ScreenBase+ScrLineLen	; 5)
+
+SCREENLASTPO	EQU	ScreenBase+ScrLineLen*ScrScreenLen-1	; 6)
+SCRSECONDLAS	EQU	ScreenLastPo-1				; 7)
+
+SCRLastLine	EQU	ScreenBase+ (ScrLineLen)*(ScrScreenLen-1) ; 8)
+LFF7F		EQU	SCRLastLine-1				  ; 9)
+
+	ifdef	crt26
+
+screensize	defl	800h-5	; Plads til taellere
+	else
+screensize	defl	screenlength
+	endif
+	
+
+	if1
+	 ife	FB$ena
+	 .PRINTX	.* Fore/Back ikke inkluderet.
+	 endif
+	endif
+
+
+SEMIACTIVE:			; Skal tegn mappes (nationale tegn)
+	DB	0		; eller ej (semigrafik aktiv)
+SourceAddr:			; Gemmer sourceaddress i INSLINE og DELLINE
+	DW	0		; 
+				;
+NOTHL:				; FUNCTION NotHL( I: INTEGER): INTEGER;
+	LD	A,H		; BEGIN
+	CPL			;   NotHL:= NOT(i); (* Ones complement *)
+	LD	H,A		; END;
+	LD	A,L		; 
+	CPL			; 
+	LD	L,A		; 
+	RET			; 
+NEGHL:				; FUNCTION NegHL( I: INTEGER): INTEGER;
+	CALL	NOTHL		; BEGIN
+	INC	HL		;   NegHL:= -I;
+	RET			; END;
+				;
+FirstOnLastLine:		; FUNCTION FirstOnLastLine: BOOLEAN; 
+	LD	HL,(ScrLineBase); BEGIN
+	LD	A,L		;   FirstOnLastLine:= ScreenPos= 1920;
+	CP	80H		;   (* 1920= (ScrHeigth-1)*ScrLineLen *)
+	RET	NZ		; END; 
+	LD	A,H		; 
+	CP	7		; 
+	RET			; 
+				;
+TRANSOUTCHAR:			; FUNCTION TranslateOut( c:CHAR; Table: Addr): CHAR;  
+	LD	A,(SEMIACTIVE)	; BEGIN
+	OR	A		;   IF SemiActive THEN TranslateChar:= c
+	LD	A,C		;   ELSE TranslateChar:= Translate(c, Table);
+	RET	NZ		; END;
+TRANSLATE:			; 
+	LD	B,0		; FUNCTION Translate(c: CHAR; Table: Addr): CHAR;
+	ADD	HL,BC		; BEGIN
+	LD	A,(HL)		;   Translate:= Table[c];
+	RET			; END;
+				;
+SETCRTXY:			; PROCEDURE SetCrtXY; 
+	PUSH	AF		; BEGIN
+	LD	A,80H		;   Crt.Command:= SetCursor;
+	OUT	(CRTctrl),A	;   Crt.Data:= XCOOR;
+	LD	A,(XCOOR)	;   Crt.Data:= YCOOR;
+	OUT	(CRTdata),A	; END;
+	LD	A,(YCOOR)	; 
+	OUT	(CRTdata),A	; 
+	POP	AF		; 
+	RET			; 
+CRTDOWN:			; PROCEDUR CrtDown;
+	LD	HL,(ScrLineBase); BEGIN
+	LD	DE,50H		;   ScreenPos:= ScreenPos+LineLength;
+	ADD	HL,DE		;   INC(Ycoor);
+	LD	(ScrLineBase),HL;   SetCrtXY;
+	LD	HL,YCOOR	; END;
+	INC	(HL)		; 
+	jr	SETCRTXY	; 
+CRTUP:				; PROCEDURE CrtUp;
+	LD	HL,(ScrLineBase); BEGIN
+	LD	DE,-ScrLineLen	;   ScreenPos:= ScreenPos+ (-LineLength);
+	ADD	HL,DE		;   DEC(Ycoor);
+	LD	(ScrLineBase),HL;   SetCrtXY;
+	LD	HL,YCOOR	; END;
+	DEC	(HL)		; 
+	jr	SETCRTXY	; 
+CRTHOME:			; PROCEDURE CrtHome;
+	LD	HL,0		; BEGIN
+	LD	(ScrLineBase),HL;   ScreenPos:= 0;
+	XOR	A		;   XCoor:= 0;
+	LD	(XCOOR),A	;   YCoor:= 0;
+	LD	(YCOOR),A	; END;
+	RET			; 
+MODULOB:			; FUNCTION ModuloB(A: BYTE; Modulo: BYTE): BYTE;
+	CP	B		; BEGIN
+	RET	C		;   WHILE A>B DO A:= A-B;
+	SUB	B		;   ModuloB:= A;
+	jr	MODULOB		; END;
+				;
+EMPTYLINE:			; PROCEDURE EmptyLine; (* This line *) 
+	LD	HL,(CURLINESTART);
+	LD	D,H		; BEGIN
+	LD	E,L		;   Fill(^CurLineStart, LineLength, ' ');
+	INC	DE		; 
+	LD	BC,ScrLineLen-1	; 
+	LD	(HL),' '	; 
+	LDIR			; 
+	if	fb$ena		; 
+	 LD	A,(FB$ACTI);   IF ForeBackActive THEN
+	 CP	0		; 
+	 RET	Z		; 
+	 LD	HL,(CB$POS)	;     Fill(^CurBitPos, 9, 0);
+	 LD	D,H		; 
+	 LD	E,L		;  
+	 INC	DE		; 
+	 LD	BC,9		; 
+	 LD	(HL),0		; 
+	 LDIR			; 
+	endif
+	RET			; END;
+;
+;
+;ROLL SCREEN FROM BOTTOM OF SCREEN
+SCROLLUP:			; PROCEDURE ScrollUp; (* Whole screen *)
+	LD	HL,SCREENLINE2	; BEGIN
+	LD	DE,SCREENBASE	;   Move(Screen[1], Screen[0], 
+	LD	BC,0780H	;        ScrLineLen* (ScrHeight-1));
+	LDIR			; 
+	LD	HL,SCRLastLine	;   CurLineStart:= ScrLastLine;
+	LD	(CURLINESTART),HL;
+	if	fb$ena
+	 LD	A,(FB$ACTI);
+	 CP	0		; 
+	 JP	Z,EMPTYLINE	;   IF ForeBackActive THEN
+	 LD	HL,FB$LINE	;   BEGIN
+	 LD	DE,FB$BASE	; 
+	 LD	BC,0F0H		;     Move..........
+	 LDIR			; 
+	 LD	HL,CB$LASTLI	;     CurBitPos:= CurBitLastLine;
+	 LD	(CB$POS),HL	;   END;
+	endif
+	jr	EMPTYLINE	;   EmptyLine;
+				; END;
+;
+;
+; 
+;
+	if	fb$ena
+LDE9A:				; MAP (HL) SK[RM TIL BITMAP
+	 LD	A,0		; 
+	 LD	B,3		; 
+LDE9E:				; 
+	 SRL	H		; 
+	 RR	L		; 
+	 RRA			; 
+	 DEC	B		; 
+	 jr	NZ,LDE9E	; 
+	 CP	0		; 
+	 RET	Z		; 
+	 LD	B,5		; 
+LDEAC:	 			; 
+	 RRA			; 
+	 DEC	B		; 
+	 jr	NZ,LDEAC	; 
+	 RET			; 
+LDEB2:	 			; 
+	 LD	DE,FB$BASE	; 
+	 ADD	HL,DE		; 
+	 CP	0		; 
+	 LD	B,A		; 
+	 LD	A,0		; 
+	 jr	NZ,LDEC1	; 
+	 AND	(HL)		; 
+	 LD	(HL),A		; 
+	 RET			; 
+LDEC1:	 			; 
+	 SCF			; 
+	 RLA			; 
+	 DEC	B		; 
+	 jr	NZ,LDEC1	; 
+	 AND	(HL)		; 
+	 LD	(HL),A		; 
+	 RET			; 
+	endif
+	
+MoveForward:			; PROCEDURE MoveForward;
+	LD	A,0		; BEGIN
+	CP	C		;   IF bc=0 THEN
+	jr	Z,MoveF2	;    (* Nothing *)
+MoveF1:				;   ELSE
+	LDIR			;     Move(    , bc );
+	RET			; END;
+MoveF2:				; 
+	CP	B		; 
+	jr	NZ,MoveF1	; 
+	RET			;
+				; 
+MoveBackward:			; PROCEDURE MoveBackward;  
+	LD	A,0		; BEGIN
+	CP	C		;   IF bc=0 THEN
+	jr	Z,MoveB1	;    (* NOTHING *)
+MoveB2:				;   ELSE
+	LDDR			;    Move( {backwards} , bc);
+	RET			; END;
+MoveB1:				; 
+	CP	B		; 
+	jr	NZ,MoveB2	; 
+	RET			; 
+				; 
+MAKEBEEP:			; PROCEDURE MakeBeep; 
+	OUT	(1CH),A		; BEGIN
+	RET			;   Port(28):= 0;
+				; END;
+				; 
+STARTGOTOXY:			; PROCEDURE StartGotoXY;        
+	CALL	CRTHOME		; BEGIN                         
+	LD	A,2		;   CrtHome;                    
+	LD	(CHARSYET),A	;   CharsYet:= 2;               
+	RET			; END;				
+				; 
+NOACTION:			;  
+	RET			; 
+				; 
+CARRIAGERET:			; PROCEDURE CarriageReturn; 
+	LD	A,0		; BEGIN
+	LD	(XCOOR),A	;   Xcoor:= 0;
+	JP	SETCRTXY	;   SetCrtXY;
+				; END;
+CLRHOM:				; 
+	LD	HL,SCREENLASTPO	; PROCEDURE ClearHome;
+	LD	DE,SCRSECONDLAS	; BEGIN
+	LD	BC,SCREENLENGTH	;   Fill(Screen, Size(Screen), 0); (* Bagfra *)
+	LD	(HL),' '	; 
+	LDDR			; 
+	CALL	CRTHOME		;   CrtHome;
+	CALL	SETCRTXY	;   SetCrtXY;
+	if	fb$ena
+	 LD	A,(FB$ACTI)	;   IF ForeBackActive THEN
+	 CP	0		;   BEGIN
+	 RET	Z		;     Fill(ForeBack, Size(ForeBack),0);
+	 XOR	A		;     ForeBackActive:= FALSE;
+	 LD	(FB$ACTI),A	;   END;
+	 LD	HL,FB$LAST	; 
+	 LD	DE,FB$SECO	; 
+	 LD	BC,0F9H		; 
+	 LD	(HL),0		; 
+	 LDDR			; 
+	endif
+	RET			; END;
+				;
+CLREOL:				; PROCEDURE ClearEndOfLine; 
+	LD	DE,SCREENBASE	; BEGIN
+	LD	HL,(ScrLineBase); 
+	ADD	HL,DE		;   Fill(^(ScreenPos+1), LineLength- XCOOR -1,
+	LD	DE,ScrLineLen-1	;        ' '); (* Bagfra *)
+	ADD	HL,DE		; 
+	LD	D,H		; 
+	LD	E,L		; 
+	DEC	DE		; 
+	LD	BC,0		; 
+	LD	A,(XCOOR)	; 
+	CPL			; 
+	INC	A		; 
+	ADD	A, ScrLineLen-1	; (* OPTIMIZE *)
+	LD	C,A		; 
+	LD	(HL),' '	; 
+	CALL	MoveBackward	; 
+	ife	fb$ena
+	 ret
+	else
+	 LD	A,(FB$ACTI)
+	 CP	0		;   IF ForeBackActive THEN 
+	 RET	Z		;   BEGIN
+	 LD	HL,(ScrLineBase);     ClrEol i bitmap    
+	 LD	D,0		; 
+	 LD	A,(XCOOR)	;   END;
+	 LD	E,A		; END;
+	 ADD	HL,DE		; 
+	 CALL	LDE9A		; 
+	 CALL	LDEB2		; 
+	 LD	A,(XCOOR)	; 
+	 SRL	A		; 
+	 SRL	A		; 
+	 SRL	A		; 
+	 CPL			; 
+	 ADD	A,9		; 
+	 RET	M		; 
+	 LD	C,A		; 
+	 LD	B,0		; 
+	 INC	HL		; 
+	 LD	D,H		; 
+	 LD	E,L		; 
+	 INC	DE		; 
+	 LD	A,0		; 
+	 JP	MoveForward	; 
+	endif			;
+CLREOS:				; PROCEDURE ClrEOS;
+	LD	HL,(ScrLineBase)	; BEGIN
+	LD	A,(XCOOR)	;   
+	LD	C,A		; 
+	LD	B,0		; 
+	ADD	HL,BC		; 
+	CALL	NEGHL		; 
+	LD	DE,SCREENLENGTH	; 
+	ADD	HL,DE		; 
+	LD	B,H		; 
+	LD	C,L		;    bc:= ScreenLength- ScreenPos- Xcoor;
+	LD	HL,SCREENLASTPO	;         (* Tegn tilbage p} sk{rmen *)
+	LD	DE,SCRSECONDLAS	; 
+	LD	(HL),' '	; 
+	CALL	MoveBackward	;    Fill(Screen[x,y], bc, ' ');
+	ife	fb$ena
+	 ret
+	else
+	 LD	A,(FB$ACTI)
+	 CP	0		;    IF ForeBackActive THEN
+	 RET	Z		;    BEGIN
+	 LD	HL,(ScrLineBase); 
+	 LD	D,0		;      Clear bits
+	 LD	A,(XCOOR)	; 
+	 LD	E,A		; 
+	 ADD	HL,DE		; 
+	 CALL	LDE9A		; 
+	 CALL	LDEB2		; 
+	 CALL	NOTHL		; 
+	 LD	DE,FB$LAST	; 
+	 ADD	HL,DE		; 
+	 LD	A,80H		; 
+	 AND	H		; 
+	 RET	NZ		; 
+	 LD	B,H		; 
+	 LD	C,L		; 
+	 LD	H,D		; 
+	 LD	L,E		; 
+	 DEC	DE		; 
+	 LD	(HL),0		;   END;
+	 JP	MoveBackward	; END;
+	endif			;
+	
+BACKSPACE:			; PROCEDURE BackSpace;
+	LD	A,(XCOOR)	; BEGIN
+	CP	0		;   IF Xcoor<>0 THEN
+	jr	Z,BACKLINEUP	;   BEGIN                 
+	DEC	A		;     Xcoor:= Xcoor-1;  
+	LD	(XCOOR),A	;     SetCrtXY;         
+	JP	SETCRTXY	;   END
+				;   ELSE
+				;   BEGIN
+BACKLINEUP:			; 
+	LD	A,ScrLineLen-1	;     Xcoor:= ScrLineLen-1;
+	LD	(XCOOR),A	;     IF ScrLineBase<>0 THEN (* 0,0 *)
+	LD	HL,(ScrLineBase);       CrtUp
+	LD	A,L		;     ELSE
+	OR	H		; 
+	JP	NZ,CRTUP	;     
+	LD	HL, ScrLineLen*(ScrScreenLen-1)	;
+	LD	(ScrLineBase),HL;     BEGIN  
+	LD	A,ScrScreenLen-1;       ScrLineBase:= ScrLineLen*(ScrScreenLen-1)
+	LD	(YCOOR),A	;       Ycoor:= ScrScreenLen-1;
+	JP	SETCRTXY	;       SetCrtXY;
+				;     END; END;
+				; END;
+FORWARDSPACE:			; 
+	LD	A,(XCOOR)	; PROCEDURE ForwardSpace;
+	CP	ScrLineLen-1	; BEGIN
+	jr	Z,FORWARDLINED	;   IF Xcoor<> ScrLineLen-1 THEN
+	INC	A		;   BEGIN
+	LD	(XCOOR),A	;     Xcoor:= Xcoor+1;
+	JP	SETCRTXY	;     SetCrtXY;
+FORWARDLINED:			;   END
+	LD	A,0		;   ELSE
+	LD	(XCOOR),A	;     Xcoor:= 0;
+	CALL	FirstOnLastLine	;     IF NOT FirstOnLastLine THEN
+	JP	NZ,CRTDOWN	;       CrtDown
+	CALL	SETCRTXY	;     ELSE BEGIN
+	JP	SCROLLUP	;       SetCrtXY;   ScrollUp
+				;     END;
+				; END;
+				;
+TABULATE:			; PROCEDURE Tabulate; 
+	CALL	FORWARDSPACE	; BEGIN
+	CALL	FORWARDSPACE	;   4 x ForwardSpace; (* Dybt godnat *)
+	CALL	FORWARDSPACE	; END;
+	jr	FORWARDSPACE	; 
+				;
+LINEDOWN:			; PROCEDURE LineDown; 
+	CALL	FirstOnLastLine	;   IF NOT FirstOnLastLine THEN
+	JP	NZ,CRTDOWN	;     CrtDown
+				;   ELSE
+	JP	SCROLLUP	;     ScrollUp
+				; END;
+				;
+LINEUP:				; PROCEDURE LineUp; 
+	LD	HL,(ScrLineBase); BEGIN
+	LD	A,L		;   IF ScrLineBase<>0 THEN
+	OR	H		;     CrtUp
+	JP	NZ,CRTUP	;   ELSE
+	LD	HL,ScrLineLen*(ScrScreenLen-1)	;
+	LD	(ScrLineBase),HL;   BEGIN
+	LD	A,18H		;     ScrLineBase:= 24*80;
+	LD	(YCOOR),A	;     Ycoor:= 24;
+	JP	SETCRTXY	;     SetCrtXY;
+				;   END;
+				; END;
+				;
+CURSORHOME:			; PROCEDURE CursorHome; 
+	CALL	CRTHOME		; BEGIN
+	JP	SETCRTXY	;   CrtHome;  SetCrtXY;
+				; END;
+				;
+DELETELINE:			; PROCEDURE DeleteLine;
+	LD	HL,(ScrLineBase); BEGIN
+	LD	B,H		;   bc:= ScrLineBase;
+	LD	C,L		; 
+	LD	DE,SCREENLINE2	; 
+	ADD	HL,DE		; 
+	LD	(SourceAddr),HL	;   SourceAddr:= SourceAddress;
+	LD	DE,-ScrLineLen	;
+	ADD	HL,DE		; 
+	EX	DE,HL		; 
+	LD	H,B		; 
+	LD	L,C		; 
+	CALL	NEGHL		; 
+	LD	BC,0780H	; 
+	ADD	HL,BC		; 
+	LD	B,H		; 
+	LD	C,L		; 
+	LD	HL,(SourceAddr)	; 
+	CALL	MoveForward	; 
+	LD	HL,SCRLastLine	; 
+	LD	(CURLINESTART),HL
+	ife	fb$ena
+	 jp	emptyline
+	else
+	 LD	A,(FB$ACTI);  IF ForeBackActive THEN
+	 CP	0		;  BEGIN
+	 JP	Z,EMPTYLINE	; 
+	 LD	HL,(ScrLineBase);    DeleteBits;
+	 CALL	LDE9A		; 
+	 LD	B,H		; 
+	 LD	C,L		; 
+	 LD	DE,FB$LINE	; 
+	 ADD	HL,DE		; 
+	 LD	(SourceAddr),HL	; 
+	 LD	DE,-10  	; 
+	 ADD	HL,DE		; 
+	 EX	DE,HL		; 
+	 LD	H,B		; 
+	 LD	L,C		; 
+	 CALL	NEGHL		; 
+	 LD	BC,0F0H		; 
+	 ADD	HL,BC		; 
+	 LD	B,H		; 
+	 LD	C,L		; 
+	 LD	HL,(SourceAddr)	; 
+	 CALL	MoveForward	; 
+	 LD	HL,CB$LASTLI	;   END;
+	 LD	(CB$POS),HL	;   EmptyLine;
+	 JP	EMPTYLINE	; END;
+	endif			;
+	
+INSERTLINE:			; PROCEDURE InsertLine;
+	LD	HL,(ScrLineBase); BEGIN
+	LD	DE,SCREENBASE	; 
+	ADD	HL,DE		; 
+	LD	(CURLINESTART),HL;
+	CALL	NEGHL		; 
+	LD	DE,SCRLastLine	; 
+	ADD	HL,DE		; 
+	LD	B,H		; 
+	LD	C,L		; 
+	LD	HL,LFF7F	;
+	LD	DE,SCREENLASTPO	; 
+	CALL	MoveBackward	; 
+	ife	fb$ena
+	 jp	emptyline
+	else
+	 LD	A,(FB$ACTI);  IF ForeBackActive THEN
+	 CP	0		;  BEGIN
+	 JP	Z,EMPTYLINE	; 
+	 LD	HL,(ScrLineBase);    InsertBits;
+	 CALL	LDE9A		; 
+	 LD	DE,FB$BASE	; 
+	 ADD	HL,DE		; 
+	 LD	(CB$POS),HL	; 
+	 CALL	NEGHL		; 
+	 LD	DE,CB$LASTLI	; 
+	 ADD	HL,DE		; 
+	 LD	B,H		; 
+	 LD	C,L		; 
+	 LD	HL,LF5EF	; 
+	 LD	DE,FB$LAST	;   END;
+	 CALL	MoveBackward	;   EmptyLine;
+	 JP	EMPTYLINE	; END;
+	endif 			;
+	
+	
+	if	fb$ena		; $$$ NB: Inkluderes KUN hvis FB$ENA er sand!
+	page
+SETBACKGROUN:			; PROCEDURE SetBackGround; 
+	LD	A,2		; BEGIN
+	LD	(FB$ACTI),A;   ForeBackActive:= 2;
+	RET			; END;
+				;
+SETFOREGROUN:			; PROCEDURE SetForeGround; 
+	LD	A,1		; BEGIN
+	LD	(FB$ACTI),A;   ForebackActive:= 1;
+	RET			; END;
+				;
+CLRFOREGROUN:			; PROCEDURE ClearForeground;  
+	LD	HL,SCREENBASE	; (* Sletter de tegn der er forgrund tegn *)
+	LD	DE,FB$BASE	; 
+	LD	B,0FAH		; (* Hvis bit=1 er baggrund, 0=forgrund *)
+CLRNEXTEIGHT:			; 
+	LD	A,(DE)		; 
+	LD	C,8		; 
+	CP	0		; 
+	JP	NZ,CLRONLYSOME	; 
+CLREIGHT:			;  (* Sletter n{ste 8 tegn *)
+	LD	(HL),' '	; 
+	INC	HL		; 
+	DEC	C		; 
+	JP	NZ,CLREIGHT	; 
+	JP	CLRDONE		; 
+CLRONLYSOME:			;  (* Sletter de af de n{ste 8 tegn som
+	RRA			;     har et 0 i deres bit position *)
+	JP	C,LE107		; 
+	LD	(HL),' '	; 
+LE107:				; 
+	INC	HL		; 
+	DEC	C		; 
+	JP	NZ,CLRONLYSOME	; 
+CLRDONE:			; 
+	INC	DE		; 
+	DEC	B		; 
+	JP	NZ,CLRNEXTEIGHT	; 
+	RET			; END;
+	endif			; end of if block!
+;
+;
+;CTRL-CHAR JUMP TABLE
+;
+CTRLCHARJP:			; 
+	DW	NOACTION	; 
+	DW	INSERTLINE	; ^A
+	DW	DELETELINE	; ^B
+	DW	NOACTION	; 
+	DW	NOACTION	; 
+	DW	BACKSPACE	; ^E
+	DW	STARTGOTOXY	; ^F
+	DW	MAKEBEEP	; ^G
+	DW	BACKSPACE	; ^H
+	DW	TABULATE	; ^I
+	DW	LINEDOWN	; ^J
+	DW	NOACTION	; 
+	DW	CLRHOM		; ^L
+	DW	CARRIAGERET	; ^M
+	DW	NOACTION	; 
+	DW	NOACTION	; 
+	DW	NOACTION	; 
+	DW	NOACTION	; 
+	DW	NOACTION	; 
+	DW	NOACTION	; 
+	if	fb$ena
+	 DW	SETBACKGROUN	; ^T
+	 DW	SETFOREGROUN	; ^U
+	 DW	CLRFOREGROUN	; ^V
+	else
+	 dw	noaction
+	 dw	noaction
+	 dw	noaction
+	endif
+	DW	NOACTION	; 
+	DW	FORWARDSPACE	; ^X
+	DW	NOACTION	; 
+	DW	LINEUP		; ^Z
+	DW	NOACTION	; 
+	DW	NOACTION	; 
+	DW	CURSORHOME	; ^]
+	DW	CLREOL		; @30
+	DW	CLREOS		; @31
+				;
+CTRLCHARS:			; PROCEDURE CtrlChars(Conout: C);
+	LD	A,0		; BEGIN
+	LD	(CHARSYET),A	;   CharsYet:=0;
+	LD	A,(COUTCHAR)	;   
+	RLCA			;   CASE ConoutChar OF
+	AND	'>'		;   ^A....
+	LD	C,A		;   ^B....
+	LD	B,0		; 
+	LD	HL,CTRLCHARJP	;   (Jump til Jumptabel[ConoutChar])
+	ADD	HL,BC		; 
+	LD	E,(HL)		; 
+	INC	HL		; 
+	LD	D,(HL)		; 
+	EX	DE,HL		;   END;
+	JP	(HL)		; END;
+				;
+SAVEXY:				; PROCEDURE SaveXY;
+	LD	A,(COUTCHAR)	; BEGIN
+	AND	7FH		;   CharsYet:= CharsYet-1;
+	SUB	' '		;   IF CharsYet=0 THEN
+	LD	HL,CHARSYET	;     GotoXY
+	DEC	(HL)		;   ELSE
+	jr	Z,GOTOXY	;     SaveXYPos:= (ConoutChar AND $7F) - 32;
+	LD	(SAVEXYPOS),A	; END;
+	RET			; 
+				; 
+GOTOXY:				; PROCEDURE GotoXY(a=LastCoordinateByte);
+	LD	D,A		; BEGIN
+	LD	A,(SAVEXYPOS)	;   IF XbeforeY THEN
+	LD	H,A		;   BEGIN
+	LD	A,(XB4Y)	;     H:= SaveXYPos; D:= LCB;
+	OR	A		;   END 
+	jr	Z,GOTOXY1	;   ELSE
+	EX	DE,HL		;   BEGIN
+GOTOXY1:			;     D:= SaveXYPos; H:= LCB;
+	LD	A,H		;   END;
+	LD	B,ScrLineLen	;   
+	CALL	MODULOB		; 
+	LD	(XCOOR),A	;   Xcoor:= H MOD ScrLineLen;
+	LD	A,D		; 
+	LD	B,ScrScreenLen	;   
+	CALL	MODULOB		; 
+	LD	(YCOOR),A	;   Ycoor:= D MOD ScrScreenLen;
+	OR	A		; 
+	JP	Z,SETCRTXY	;   IF Ycoor<>0 THEN
+	LD	HL,(ScrLineBase); 
+	LD	DE,ScrLineLen	;     ScreenPos:= ScreenPos+ Ycoor*ScrLineLen;
+GOTOXY2:			;     (* Tidligere sat til (0,0) *)
+	ADD	HL,DE		; 
+	DEC	A		; 
+	jr	NZ,GOTOXY2	; 
+	LD	(ScrLineBase),HL;   SetCrtXY;
+	JP	SETCRTXY	; END;
+				; 
+PRINTCHAR:			; PROCEDURE PrintChar;
+	LD	HL,(ScrLineBase); (* Tegn er i ConoutChar *)
+	LD	D,0		; BEGIN
+	LD	A,(XCOOR)	;   XcoorW:= ScrLineBase+ Xcoor;
+	LD	E,A		;   
+	ADD	HL,DE		; 
+	LD	(XCOORW),HL	;   a:= ConOutChar;
+	LD	A,(COUTCHAR)	;   IF a>= $C0 THEN a:= a-$C0; (* 7-bit keyouttable *)
+	CP	0C0H		; 
+	jr	C,SETSEMIMODE	; 
+	SUB	0C0H		; 
+SETSEMIMODE:			;   IF a>=$80 THEN
+	LD	C,A		;   
+	CP	80H		;     SemiActive:= (a and $4) (* Mask semi bit *)
+	jr	C,CRTMAPCH	;   ELSE
+	AND	4		;     
+	LD	(SEMIACTIVE),A	; 
+	LD	A,C		; 
+	jr	CRTPUTCH	; 
+CRTMAPCH:			;     a:= KeyoutTable[a]; 
+	LD	HL,KEYOUTTABLE	;
+	CALL	TRANSOUTCHAR	; 
+CRTPUTCH:			;   
+	LD	HL,(XCOORW)	;   
+	LD	DE,SCREENBASE	; 
+	ADD	HL,DE		; 
+	LD	(HL),A		;   Screen[XcoorW]:= a;
+	CALL	FORWARDSPACE	;   ForwardSpace;
+	ife	fb$ena
+	 ret
+	else
+	 LD	A,(FB$ACTI);   IF ForeBackActive=??? THEN
+	 CP	2		;   
+	 RET	NZ		; 
+	 LD	HL,(XCOORW)	;     S{t passende bit
+	 CALL	LDE9A		; 
+	 LD	DE,FB$BASE	; 
+	 ADD	HL,DE		; 
+	 CP	0		; 
+	 LD	B,A		; 
+	 LD	A,1		; 
+	 JP	NZ,ROTMASK	; 
+	 OR	(HL)		; 
+	 LD	(HL),A		; 
+ 	 RET			; 
+				; 
+ROTMASK:			; 
+	 RLCA			; 
+	 DEC	B		; 
+	 JP	NZ,ROTMASK	; 
+	 OR	(HL)		; 
+	 LD	(HL),A		; 
+	 RET			; END;
+	endif
+	
+				;
+COUT:				; PROCEDURE Conout(C: CHAR); 
+	DI			; 
+	PUSH	HL		; (* Enter biosrutine *)
+	LD	HL,0		; 
+	ADD	HL,SP		; 
+	LD	SP,BIOSSTACK	; 
+	EI			; 
+	PUSH	HL		; 
+	PUSH	AF		; 
+	PUSH	BC		; 
+	PUSH	DE		; BEGIN
+	LD	A,C		;   ConoutChar:= C;
+	LD	(COUTCHAR),A	;   IF CharsYet<>0 THEN
+	LD	A,(CHARSYET)	;   
+	OR	A		; 
+	jr	Z,CRTOUT	; 
+	CALL	SAVEXY		;     SaveXy
+	jr	COUTRET	;   ELSE
+CRTOUT:				;   
+	LD	A,(COUTCHAR)	;     IF ConoutChar<' ' THEN
+	CP	' '		;       CtrlChars
+	jr	NC,VISIBLECHAR	;     ELSE
+	CALL	CTRLCHARS	;       PrintChar;
+	jr	COUTRET	; 
+VISIBLECHAR:			; 
+	CALL	PRINTCHAR	; 
+COUTRET:			; 
+	POP	DE		;   (* Leave bios rutine *)
+	POP	BC		; 
+	POP	AF		; 
+	POP	HL		; 
+	DI			; 
+	LD	SP,HL		; 
+	POP	HL		; 
+	EI			; 
+	RET			; END; (* Conout *)
+
+;
+;  END OF CRT routines.
+;
+

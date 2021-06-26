@@ -1,0 +1,781 @@
+	subttl	File: INIT.MAC
+;;;  INIT.MAC  indeholder initialisertingsdelen af Cbios.
+;
+; Dette kommer direkte ind p} adresse d700, som er det foerste der kaldes
+; at loaderrutinen
+
+	DI			; 
+;
+;MOVE THE CODE PART OF BIOS
+	LD	HL,LOADADDR	;   Kildeteksten l{ses ind p} adresse 0
+	LD	DE,CODEDESTINAT	;   (100 under udvikling), og flyttes her
+	LD	BC,CODELENGTH	;   op p} den faktiske plads.  Denne adresse
+	LDIR			;   patches af putbios!!!
+;
+;MOVE THE CONVERSION PART OF THE BIOS
+	LD	HL,CONVLOADADDR	;   Flyt konverteringstabellerne ind p} plads.
+	LD	DE,KEYOUTTABLE	;
+	LD	BC,CONVLENGTH	; 
+	LDIR			; 
+	LD	SP,DEFDMAAREA	;   Ops{t stak pointer under ops{tning
+	LD	A,INTERRUPTPAG	;   (* Defineret ved interrupt systemet *)
+	LD	I,A		;   Klarg|r interruptsystemet..
+	IM	2		;   (EI kommer f|rst n}r alle enheder er
+				;    initialiseret)
+	page
+;
+; SETUP Z80 PIO (KEYBOARD=12H PARALLEL=13H).     BOGEN SIDE 191
+;
+; 910131 - Keyboard er input, og parallel er output.  Parallel bruges ikke
+;
+;  PIO best}r af to porte (A,B) som begge kan s{ttes op til at arbejde i 
+;  4 tilstande.
+;
+;  Output (0), Input(1), Begge veje (2), samt Bit kontol (3)
+;
+;  Output og Input er lige ud af landevejen.  Begge veje (2) benytter begge
+;  porte under port A.  Port B skal v{re inaktiveret (sat i Mode 3, og DI)
+;  Se ZILOG reference bog s 192 for yderligere info.
+;  Bit kontrol fungerer for begge porte.  Her defineres hver bit individuelt
+;  som I eller O.  Der genereres et Interrupt hvis enten en eller alle de
+;  specificerede bits {ndres.  (en= A0, alle=A1)
+;
+;
+; mmxx1111= Mode control word. mm=(mode 0,1,2, (0-2 yderligere) 3 (1-3 ydereligere)) 
+;
+; vvvvvvv0= Interrupt vector
+;
+; iiiiiiii= I/O register control word (0=output, 1=input). F|lger umiddelbart
+;	    MCW i mode 3.
+;
+; IAHM0111= Interrupt control word    (I1=Interrupt enabled, A1=And function,
+;		H1=Active High, M1=Mask control word follows)
+;
+; mmmmmmmm= Mask Control Word - If def as input and m=0 an interrupt will 
+;				occur when bit goes high
+; ixxx0011= Interrupt disable.  i1=enable, i0=Disable.
+;
+
+kbintvect	equ	20h	; Keyboard interrupt vektor
+parintvect	equ	22h	; Parallel -//-
+pioAcontrl	equ	12h	; Kontrol og dataporte for
+pioAdata	equ	10h	; hver pio kanal.
+pioBcontrl	equ	13h	;
+pioBdata	equ	11h	;
+
+				; BEGIN (* PIO INT *)
+	LD	A,kbintvect	;   PIO[A].IntVect:= KbIntVect;
+	OUT	(pioAcontrl),A	; 
+	LD	A,parintvect	;   PIO[B].IntVect:= ParIntVect;
+	OUT	(pioBcontrl),A	; 
+	LD	A,01001111b	;   PIO[A].Mode:= Output;
+	OUT	(pioAcontrl),A	; 
+	LD	A,00001111b	;   PIO[B].Mode:= Input;
+	OUT	(pioBcontrl),A	; 
+	LD	A,10000011b	;   PiO[A].InterruptOk:= TRUE;
+	OUT	(pioAcontrl),A	;   
+	OUT	(pioBcontrl),A	;   PIO[B].InterruptOk:= TRUE;
+	page			; END; (* PIO INIT *)
+;
+;SETUP Z80 CTC (0C=SIO TERMINAL, 0D=SIOPRINTER, 0E=DISP INT, OF=FLOPPY)
+;DOK S.205
+;
+; Z80 Counter/Timer Circuit har 4 uafh{ngige t{llere/timere som kan
+; programmeres til lidt af hver.
+;
+; Dette foreg}r med 2 bytes til den p}g{ldende kanal.  En tredie er n|dvendig 
+; n}r interrupts er aktive.  N}r den f|rst er startet, t{lles der nedaf, og
+; n}r nul n}s, genindl{ses tidskonstanten og nedt{lling genstartes.
+;
+; Channel Control Word :
+;  7: Interrupt enable
+;  6: 0=Timer / 1=T{ller
+;  5: 0=Prescalerx16 / 1=Prescalerx256
+;  4: 0=Nedad edge / 1=Opad edge
+;  3: 0=Automatisk trigger / 1=Start ved extern CLK/TRG puls
+;  2: 0=Ingen tidskonstant (benyttes ved update)/ 1=Tidskonstant f|lger
+;  1: 1=Software reset
+;  0: 0=Interupt vektor, 1= Control word
+;
+; Time Constant:  
+;  0..255. Tidsinterval= Clock periode x Prescale x Time Constant.
+;
+; Interrupt Vector Word:
+;  VVVVVxx0 : Vektor.  xx s{ttes automatisk til 0-3
+;
+ctc0port	equ	0ch
+ctc1port	equ	0dh
+ctc2port	equ	0eh
+ctc3port	equ	0fh
+
+	LD	A,0		; BEGIN 
+	OUT	(ctc0port),A	;   CTC.InterruptVektor:= 0;
+	LD	A,(CTC0C)	; 
+	OUT	(ctc0port),A	;   Ops{t hver port som
+	LD	A,(CTC0T)	;   defineret i konfigurationsblokken
+	OUT	(ctc0port),A	; 
+	LD	A,(CTC1C)	; 
+	OUT	(ctc1port),A	; 
+	LD	A,(CTC1T)	; 
+	OUT	(ctc1port),A	; 
+	LD	A,(CTC2C)	; 
+	OUT	(ctc2port),A	; 
+	LD	A,(CTC2T)	; 
+	OUT	(ctc2port),A	; 
+	LD	A,(CTC3C)	; 
+	OUT	(ctc3port),A	; 
+	LD	A,(CTC3T)	; 
+	OUT	(ctc3port),A	; END;
+;
+; Her initialiseres en ukendt enhed.  G{t er p} H|jopl|sningssk{rm
+;
+	LD	A,8		; 
+	OUT	(44H),A		; 
+	LD	A,(LD544)	; 
+	OUT	(44H),A		; 
+	LD	A,(LD545)	; 
+	OUT	(44H),A		; 
+	LD	A,(LD546)	; 
+	OUT	(45H),A		; 
+	LD	A,(LD546)	; 
+	OUT	(46H),A		; 
+	LD	A,(LD546)	; 
+	OUT	(47H),A		; 
+;
+;
+; SIO - Se SERIAL.MAC (inkluderet under de serielle rutiner) for dokumentation
+;
+;***T$Ctrl	equ	10
+;***T$Data	equ	8
+;***L$Ctrl	equ	11
+;***L$Data	equ	9
+
+;INIT SIO (TERMINAL)
+	LD	HL,TERMINIT	;  Ops{t de serielle porte og ...
+	LD	B,9		; 
+	LD	C,T$Ctrl	; 
+	OTIR			; 
+;
+;INIT SIO (PRINTER)		;  ---- ######### Disse skal externe hvis opsplitning imoduler
+	LD	HL,PRINTINIT	; 
+	LD	B,0BH		; 
+	LD	C,L$Ctrl	; 
+	OTIR			; 
+				;
+	IN	A,(T$Ctrl)	;  gem resultatet til senere
+	LD	(T$RR0),A	; 
+	LD	A,1		; TermRR0:= Sio[0].RR0;
+	OUT	(T$Ctrl),A	; TermRR1:= Sio[0].RR1;
+	IN	A,(T$Ctrl)	; 
+	LD	(T$RR1),A	; 
+	IN	A,(L$Ctrl)	; 
+	LD	(L$RR0),A	;  PrinterRR0:= Sio[1].RR0;
+	LD	A,1		;  PrinterRR1:= Sio[1].RR1;
+	OUT	(L$Ctrl),A	; 
+	IN	A,(L$Ctrl)	; 
+	LD	(L$RR1),A	; 
+	page
+
+; DMA kreds.  Am9517A Multimode DMA controller
+;
+; Kredsen indholder 4 uafh{ngige channels, med 64k adresse og Ordt{lnings
+; mulighed.  Den indeholder f|lgende registre (W= 16 bit, 8=8 bit, 4=4 bit)
+;
+; Navn					Antal
+; Base address registers (W)		4
+; Base Word Count registers (W)		4
+; Current Address Registers (W)		4
+; Current Word Count registers (W)	4
+; Temporary Address register (W)	1
+; Temporary Word COunt register (W)	1
+; Status register (8)			1
+; Command register (8)			1
+; Temporary Register (8)		1
+; Mode registers (8)			4
+; Mask register (4)			1
+; Request register (4)			1
+;
+; PORT fordeling
+;
+; Nr	Read			Write
+; F0	0) Current address	0) Base and Current address
+; F1	0) Current Word count	0) Base Word Count
+; F2	1) Current address	1) Base and Current address
+; F3	1) Current Word count	1) Base Word Count
+; F4	2) Current address	2) Base and Current address
+; F5	2) Current Word count	2) Base Word Count
+; F6	3) Current address	3) Base and Current address
+; F7	3) Current Word count	3) Base Word Count
+; F8	Status register		Command register
+; F9	-			Request register
+; FA	-			Single mask register
+; FB	- 			Mode register
+; FC	-			Clear Flip/Flop (hi/low switch)
+; FD	Temporary register	Master Clear
+; FE	-			-
+; FF	-			All mask register bits
+;
+; Command register:
+;   7: 0= DACK sense active low, 1= DACK sense active high
+;   6: 0= DREQ sense active high, 1= DREQ sense active low
+;   5: 0= Late write selection, 1= Extended write selection (X if bit 3=1)
+;   4: 0= Fixed priority, 1= Rotating priority
+;   3: 0= Normal timing, 1= Compressed timing    (don't care if bit 0=1)
+;   2: 0= Controller enable, 1= Controller disable
+;   1: Channel 0 address hold 0=disable/1=enable (don't care if bit 0=0)
+;   0: Memory-Memory 1=Enable/0=Disable
+;
+; Mode register:
+;   76: Select mode (00= Demand, 01= Single, 10= Block, 11= Cascade)
+;   5:  0= Address increment, 1= Address decrement
+;   4:  0= No autoinitialize, 1= Do autoinitialize
+;   32: Transfer (00= Verify, 01= Write, 10= Read, 11= Illegal, xx if 76:=11)
+;   10: Channel  (00= 0, 01=1, 10=2, 11=3)
+;
+; Request register:
+;   76543:  Don't care
+;    2: 0= Reset request bit, 1= Set request bit
+;   10: Channel (00=0, 01=1, 10=2, 11=3)
+;
+; Mask register 
+;   76543: Don't care
+;    2: 0= Clear mask bit, 1= Set mask bit
+;   10: Channel (00=0, 01=1, 10=2, 11=3)
+;
+; All bits mask register
+;  7654: Don't care
+;    3: Channel 3 bit 
+;    2: Channel 2 bit
+;    1: Channel 1 bit
+;    0: Channel 0 bit
+;
+; Status register
+;    7: Channel 3 request
+;    6: Channel 2 request
+;    5: Channel 1 request
+;    4: Channel 0 request
+;    3: Channel 3 has reached terminal count
+;    2: Channel 2 has reached terminal count
+;    1: Channel 1 has reached terminal count
+;    0: Channel 0 has reached terminal count
+;
+; Clear First/Last flip-flop.  Nulstiller flip-flop s} at der peges p} 
+; low-byte af et word.  Ved skrivning af en byte (som bliver til low-byte
+; af det p}g{ldende ord), skifter flip-flop s} at n{ste byte bliver til
+; hi-byte.  Denne kommando s{tter flip-floppen til et kendt stadie.
+;
+; Master Clear.  Fungerer som hardware reset.  Nulstiller alle kanaler.
+;
+
+dmacmd		equ	0f8h	; Write Command register
+dmarequest	equ	0f9h	; Write Request register
+dmasinglebit	equ	0fah	; Write Single mask register bit
+dmamode		equ	0fbh	; Write Mode register
+dmaclrff	equ	0fch	; Clear flip/flop
+dmareset	equ	0fdh	; Master reset
+dmaallbit	equ	0ffh	; Write all mask register bits
+
+dmastatus	equ	0f8h	; Read status register
+dmatmp		equ	0fdh	; Read temporary register
+
+;ROTATING PRIO,0-3:WRITE/SINGLE/AUTO-INC
+	LD	A,00100000b	; BEGIN
+	OUT	(dmacmd),A	;   WITH DMA DO BEGIN
+	LD	A,(DMA0INIT)	;     No memory-memory, Controller enabled,
+	OUT	(dmamode),A	;     Normal timing, Fixed priority, 
+	LD	A,(DMA2INIT)	;     DREQ sense high, DACK sense low.
+	OUT	(dmamode),A	; 
+	LD	A,(DMA3INIT)	;   
+	OUT	(dmamode),A	; END; END;
+	page
+;
+;DO MACHINE NEED ANYTHING MORE?
+	IN	A,(14H)		; 
+	AND	80H		; 
+	Jr	Z,FDCBUSY	; 
+;
+;CHANGE DD 8" TO DD 5" FOR 5" MACHINES
+	LD	HL,IFLOPCONF	; 
+	LD	A,(HL)		; 
+	CP	8		; 
+	jr	NZ,DISKTYPEOK	; 
+	LD	(HL),10H	; 
+DISKTYPEOK:			; 
+	INC	HL		; 
+	LD	A,(HL)		; 
+	CP	8		; 
+	jr	NZ,INITFDC	; 
+	LD	(HL),10H	; 
+	page			;
+; Floppy Disk Controller. uPD765
+;
+; L{sning fra FDCctrl giver  Main Status Register, som har f|lgende
+; bitbetydning :
+;
+;   76543210 = Bitpositioner, med bit 7=80H og bit 0=1H
+;
+; Main Status Register (Kan altid afl{ses fra kommandoport)
+; ====================
+;
+;   0=01: Drev 0 Seeker
+;   1=02: Drev 1 Seeker
+;   2=04: Drev 2 Seeker
+;   3=08: Drev 3 Seeker
+;   4=10: FDC er i gang med at udf|re en kommando. Don't disturb
+;   5=20: 0=DMA mode, 1=Non-DMA mode
+;   6=40: 0=Data fra processor til FDC, 1=Data til processor fra FDC
+;   7=80: 1=Klar til at modtage/sende data, 0=ikke klar
+;
+; Desuden vil der som resultat komme statusregistre. Der er ialt 4. 
+; Hvis (SIS) er angivet, vil man skulle bruge Sense Interrupt Status kommandoen
+; for at afl{se bitinformationen.
+;
+;
+; ST0:  ( Status register 0)
+; ==========================
+;
+; 7,6=C0 : 00= Kommando afsluttet korrekt
+;          01= Kommando afsluttet p} unormal vis.
+;          10= Ukendt kommando
+;          11= Et drev skiftede READY tilstand. (S{dvanligvis disk ind/ud)
+; 5=20   :  1= Seek/Recalibrate kommando afsluttet. (SIS)
+; 4=10   :  1= Drev ikke n}et til spor 0 under recalibrate. (SIS)
+; 3=08   :  1= Drev ikke klar.  
+; 2=04   :  Head adress.  Over/undersiden af disketten (dvs 1 ell 2 hoveder)
+; 1,0=03 : 00= Drev 0, 01=Drev 1, 10= Drev 2, 11= Drev 3
+;
+;
+; ST1:  ( Status register 1)
+; ==========================
+;
+; 7=80   :  1= End of track.  Controlleren l{ste for meget uden at blive afbrudt.
+; 6=40   :  Ikke benyttet.
+; 5=20   :  1= CRC fejl (Bvadr).  Check ST2.5 for at se hvor fejlen er.
+; 4=10   :  1= Overl|b.  Processoren fjerner ikke data hurtigt nok fra FDC.
+; 3=08   :  Ikke benyttet.
+; 2=04   :  1=Ingen data. Tre muligheder : 
+;             1) Kan ikke finde angivne sektor, selvom adressem{rket blev 
+;                fundet( READ, WRITE, SCAN)
+;             2) Fejl ved Read ID; 
+;             3) Kan ikke finde startsektor (READ TRACK)
+; 1=02   :  Disketten er skrivebeskyttet.
+; 0=01   :  Fejl i adressem{rke.  Check ST2.0 for at se hvor fejlen er.
+;
+;
+; ST2:  ( Status register 2)
+; ==========================
+;
+; 7=80   :  Ubrugt
+; 6=40   :  Fors|gt at l{se DELETED data i non-deleted read, eller omvendt.
+;           DELETED DATA faciliteten underst|ttes ikke af CP/M.
+; 5=20   :  CRC fejl i data felt. ST1.5 er ogs} sat.
+; 4=10   :  Forkert spor. KUN hvis |nsket sektor ikke kan findes og alle
+;           sektorene p} nuv{rende spor har spornr forskelligt fra det i
+;           kommandoen specificerede, som IKKE er $FF.
+; 3=08   :  Scan kommandoen har fundet "Equal" data p} disken.
+; 2=04   :  Scan lykkedes ikke p} dette spor.
+; 1=02   :  Samme som for ST2.4, men hvor spornr er $FF.
+; 0=01   :  Mangler adressem{rke i datafelt.  ST1.0 er ogs} sat.
+;
+;
+; ST3:  ( Status register 3)
+; ==========================
+;
+; 7=80   :  Ubrugt
+; 6=40   :  Write protect status
+; 5=20   :  Ready status
+; 4=10   :  Track 0 status
+; 3=08   :  Ubrugt
+; 2=04   :  Head select status
+; 0,1=03 :  Drev valgt : 00=0, 01=1, 10=2, 11=3.
+;
+;
+; Kommandobyte nr 1
+; =================
+; 
+; 7=80   : MT.  "Multi-track".  Hvis sat, kan begge sider af sporet l{ses.
+; 6=40   : MFM. "Modified frequency modulation". 1=MFM, 0=FM. MFM er bedst
+;          men kr{ver bedre hardware, specielt l{sehovedet.  Der henvises til
+;          ekstern dokumentation
+; 5=20   : SK. "Skip" (???)
+; 4-0=1F : Selve kommandoen.
+;  00010 = Read a track       (A)
+; (00011 = Specify)
+;  00100 = Sense drive status (B)
+;  00101 = Write data         (A)
+;  00110 = Read data          (A)
+;  00111 = Recalibrate        (C)
+;  01000 = Sense interrupt    (D)
+;  01001 = Write deleted data (A)
+;  01010 = Read ID            (E)
+;  01100 = Read deleted data  (A)
+;  01101 = Format a track     (F)
+;  01111 = Seek               (G)
+;  10001 = Scan equal         (H)
+;  11001 = Scan low or equal  (H)
+;  11101 = Scan high or equal (H)
+;
+; 		Inddata				Uddata
+;(A)	Track, Head, Sector, Bytes/	ST0, ST1, ST2, Track, Head, Sector,
+;	Sector,  EOT sector, Gap,	Bytes/Sector
+;	Data length
+;(B)	-nil-				ST3
+;(C)	-nil-				-nil-
+;(D)	-nil-	(nb kun 1 byte)		ST0, Track
+;(E)	-nil-				som (A)
+;(F)	Bytes/Sector, Sectors/Track,	som (A)
+;	Gap, Data pattern		
+;(G)	Track				-nil-
+;(H)	Track, Head, Sector, Bytes/	som (A)
+;	sector, EOT sector, Gap,
+;	Sector step size
+
+FDCctrl	equ	5		; Control port
+FDCdata	equ	4		; Data port
+
+; FDC kommandonr
+;
+FDCrecal	equ	7	; Recalibrate FDC
+FDCsds		equ	4	; Sense drive status
+FDCsis		equ	8	; Sense interrupt status
+FDCseekcmd	equ	15	; Seek track
+
+INITFDC:			; PROCEDURE InitFDC;
+	LD	A,0FH		; BEGIN
+	LD	(LD526),A	;   LD526:= $15;
+FDCBUSY:			; 
+	IN	A,(FDCdata)	;   REPEAT
+	AND	00011111b	;     Check FDC status;
+	jr	NZ,FDCBUSY	;   UNTIL CommandDone && NoSeekingDrives;
+	LD	HL,FCBINITDATA	; 
+	LD	B,(HL)		;   FOR B:= 1 TO FcbInitData[0] DO
+INITFCBNEXT:			;   BEGIN
+	INC	HL		;     REPEAT
+INITFCB1:			;       Check FDC status;
+	IN	A,(FDCdata)	;     UNTIL Ready to receive Command;
+	AND	0C0H		;     FDC.Command:= FcbInitData[ B ];
+	CP	80H		;   END;
+	jr	NZ,INITFCB1	; 
+	LD	A,(HL)		; 
+	OUT	(FDCctrl),A	; 
+	DEC	B		; 
+	jr	NZ,INITFCBNEXT	; END;
+;
+;CLEAR SCREEN
+;
+	LD	HL,SCREENBASE	; Fill(Screen, Size(Screen), ' ');
+	LD	DE,ScrPos2	; 
+	LD	BC,SCREENsize	; 910307 -- Sletter ogsaa 26ende linie
+	LD	(HL),' '	; 
+	LDIR			; 
+	ld	(hl), 0ffh	; Stop DMA til CRT. Skal v{re der
+;
+;CLEAR CHARACTER ATTIBUTES
+;
+	if	fb$ena
+	 LD	HL,FB$BASE	; Fill(ForeBack, Size(ForeBack), 0);
+	 LD	DE,FB$POS1	; 
+	 LD	BC,0FAH		; 
+	 LD	(HL),0		; 
+	 LDIR			; 
+	endif
+;
+;CLEAR VARIABLES ABOVE SCREENMEM 
+;Unoedvendiggjort 910302
+	
+;	LD	HL,XCOOR	; Fill($FFD1..$FFFF, 0);
+;	LD	DE,ScrLineBase	; 
+;	LD	(HL),0		; 
+;	LD	BC,0ffffh-Xcoor	; 
+;	LDIR			; 
+
+	page			;
+; CRT controller  Intel 8275
+;
+; Denne controller er super primitiv, da videoattributter optager et tegn p}
+; sk{rmen hvilket g|r den uanvendelig til terminalemulering.
+;
+; Controlleren har 8 kommandoer (+ er write parametre, - er read retur)
+;
+; 00000000 +4 Reset		- S{tter mange ting.  Se dokumentationen
+; 001sssbb    Start display	- (sss*8)-1 clocks/dma req, 2^bb dma cycles/burst
+; 01000000    Stop display	- Laver ingen output til sk{rm.
+; 01100000 -2 L{s lyspen	- Afl{ser lyspens position - Un|jagtig
+; 10000000 +2 Load Cursor	- Gotoxy(parm1, Parm2)
+; 10100000    Enable interrupt
+; 11000000    Disable interrupt
+; 11100000    Preset counters   - Nulstiller display timere 
+;
+
+CRTctrl	equ	1		; CRT command port
+CRTdata	equ	0		; CRT data port
+
+CRTgoto		equ	80h	; CRT gotoxy kommando
+CRTreset	equ	0	; CRT reset command
+
+	LD	A,CRTreset	; BEGIN
+	OUT	(CRTctrl),A	; 
+	LD	A,(CRT0)	; 
+	OUT	(CRTdata),A	;   Setup CRT
+	LD	A,(CRT1)	; 
+	ifdef	crt26		;
+	 sub	 03fh		;   VerticalRetraceCount=-1; LinesOnScren=+1;
+	endif			;
+	OUT	(CRTdata),A	; 
+	LD	A,(CRT2)	; 
+	ifdef	crt26		;
+	 add	 a, 030h	;   UnderLinePlacement=+3; 
+	endif			;   
+	OUT	(CRTdata),A	; 
+	LD	A,(CRT3)	; 
+	OUT	(CRTdata),A	; 
+				;
+	LD	A,CRTgoto	;   GotoXY(0,0); 
+	OUT	(CRTctrl),A	; 
+	LD	A,0		; 
+	OUT	(CRTdata),A	; 
+	OUT	(CRTdata),A	; 
+				;   Preset counters for display
+	LD	A,11100000b	; 
+	OUT	(CRTctrl),A	; 
+	LD	A,00100011b	;   Start Display. 0 clocks between dma req,
+LD84C:				;   2 dma cycles pr burst
+	OUT	(CRTctrl),A	; 
+;
+;
+;ZERO ALL BUFFER AREA (DMA FOR A: .. FB$)
+;
+	LD	DE,BUFFERSTART	; Fill(BufferStart..ForeBackBase-1,0);
+	LD	HL,FB$BASE	; 
+	AND	A		; 
+	SBC	HL,DE		; 
+	LD	C,L		; 
+	LD	B,H		; 
+	LD	HL,BufferStart+1; 
+	EX	DE,HL		; 
+	LD	(HL),0		; 
+	LDIR			; 
+;
+;EXTRACT SIO-BITLENGTHS
+;
+	LD	A,(TERMBYTE)	; 
+	AND	60H		; 
+	LD	(TERMBITS),A	; 
+	LD	A,(PRINTBYTE)	; 
+	AND	60H		; 
+	LD	(PRINTBITS),A	; 
+				; 
+	LD	A,(CXB4Y)	; 
+	LD	(XB4Y),A	; 
+	LD	HL,(CMOTOROFFTIM)
+	LD	(MOTOROFFTIME),HL
+	LD	A,True		; 
+	LD	(FDCRESOK),A	; 
+	CALL	MOVECONF	; 
+	EI			; --- s} er systemet aktivt
+	LD	A,1		; 
+	LD	(FLOPPYBOOT),A	; Hvis alt andet glipper s} start op fra floppy
+	if 	UseHD
+TRYLOADHD:			; 
+	 LD	B,1		; MEEEN hvis der er en harddisk der 
+	 LD	A,' '		; gider svare s} pr|v den
+	 CALL	OUT66		; 
+	 LD	BC,0F000h	; 
+LD895:				; 
+	 LD	A,(HDREADY)	; 
+	 OR	A		; 
+
+ld89a	 equ	$+1		; (gjort 910112/Th )
+
+	 JR	NZ,HDLOAD	;HER INDS{TTES LD89A I DENNE OG N{STE LINIE
+	 DEC	BC		; 
+	 LD	A,B		; 
+	 OR	C		; 
+	 JR	NZ,LD895	; 
+	 JP	NOHARDDISK	; 
+HDLOAD:				; PROCEDURE HdLoad;
+	 LD	A,(ERFLAG)	; BEGIN
+	 OR	A		;   ErFlagWas:= ErFlag;
+	 LD	A,0		;   ErFlag:= FALSE;
+	 LD	(ERFLAG),A	;   HdReady:= FALSE; (* Ack int *)
+	 LD	(HDREADY),A	; 
+	 PUSH	AF		;   IF WaitStr[1]<>@0 THEN
+	 LD	HL,WAITMSG	;     WriteLn('Waiting'); (* WaitStr *)
+	 CALL	PRINTSTR	; 
+				;   (* DON'T PRINT MESSAGE ANYMORE *)
+	 XOR	A		;   WaitStr[1]:= @0;
+	 LD	(WAITMSG),A	; 
+	 POP	AF		; 
+	 jr	NZ,TRYLOADHD	; IF ErFlagWAS= TRUE THEN GOTO TryLoadHd;
+	 XOR	A		; (* Pr|v endnu engan *)
+;
+;LOAD CONFIGURATION FROM HARDDISK
+;
+	 LD	(HDREADY),A	;   HdReady:= FALSE;
+	 LD	(FLOPPYBOOT),A	;   FloppyBoot:= FALSE;
+	 LD	BC,2		; 
+	 CALL	SELDSK		;   IF DiskRead(
+	 LD	BC,0		;        Drive=C,
+	 CALL	SETTRK		;        Track=0,
+	 LD	BC,7CH		;        Sector=1,
+	 CALL	SETSEC		;        DMA=DefDmaArea)<>OK
+	 LD	BC,DEFDMAAREA	;   THEN 
+	 CALL	SETDMA		;   BEGIN
+	 CALL	DSKREAD		;     WriteLn('Cannot Load configuration');
+	 OR	A		; 
+	 JR	Z,MOVENEWCONF	; 
+	 LD	HL,CANNOTMSG	; 
+	 CALL	PRINTSTR	;     Cancel ClearScreen in SignonMSg;
+	 LD	A,0DH		;  
+	 LD	(SIGNONMSG),A	;     Goto NoHardDisk;
+	 JR	NOHARDDISK	;   END; (* Cannot load config from hd *)
+				;
+;MOVE NEWLY READ CONFIGURATION RECORD TO CORRECT PLACE
+;
+MOVENEWCONF:			; 
+	 LD	DE,IHDCONF	; 
+	 LD	HL,DEFDMAAREA	; 
+	 LD	BC,13H		; 
+	 LDIR			; 
+	 LD	HL,IHDCONF	; 
+	 LD	A,(HL)		; 
+	 CP	' '		; 
+	 JR	Z,LD923		; 
+	 CP	'('		; 
+	 JR	Z,LD923		; 
+	 LD	A,(DR0)		; 
+	 ADD	A,18H		; 
+	 LD	(HL),A		; 
+	 INC	HL		; 
+	 LD	(HL),True	; 
+	 LD	HL,LD540	; 
+	 LD	(HL),2		; 
+	 INC	HL		; 
+	 LD	(HL),1		; 
+	 JR	LD923		; HardDisk rutiner ^^
+	endif	; UseHD		; --------------------------------
+NOHARDDISK:			; 
+	LD	A,True		; Faelles startop
+	LD	(IHDCONF),A	; 
+	XOR	A		; 
+	LD	(BOOTDRIVE),A	; 
+LD923:				; 
+	CALL	MOVECONF	; 
+	LD	HL,C$DPB	; 
+	LD	(CURFCB),HL	; 
+	LD	HL,DR2		; 
+	PUSH	HL		; 
+SETUPHD:			; 
+	POP	HL		; 
+	PUSH	HL		; 
+	CALL	GETDPBADDR	; 
+	POP	HL		; 
+	INC	HL		; 
+	PUSH	HL		; 
+	LD	A,(HL)		; 
+	CP	True		; 
+	JR	NZ,SETUPHD	; 
+	POP	HL		; 
+	LD	BC,1BH		; 
+	LD	HL,DRVHDCONF	; 
+	LD	DE,LEA98	; 
+LD947:				; 
+	LD	A,(HL)		; 
+	PUSH	HL		; 
+	AND	0F8H		; 
+	LD	HL,29H		; 
+	CP	'0'		; 
+	CALL	Z,SAVEHLBC2DE	; 
+	LD	HL,52H		; 
+	CP	'8'		; 
+	CALL	Z,SAVEHLBC2DE	; 
+	LD	HL,0A5H		; 
+	CP	'@'		; 
+	CALL	Z,SAVEHLBC2DE	; 
+	POP	HL		; 
+	LD	A,(HL)		; 
+	INC	HL		; 
+	CP	0FFH		; 
+	JR	NZ,LD947	; 
+	JP	JPCOLDBOOT	; 
+;
+;S{TTES I D99A TIL NOGET MED EN DPB POINTER SOM OPDATERES..???
+CURFCB:				; 
+	DW	0		; 
+
+	page
+;
+;
+MOVECONF:			; 
+	LD	C,0		; 
+	LD	HL,IFLOPCONF	; 
+	LD	DE,DR0		; 
+NEXTCONF:			; 
+	LD	A,(HL)		; 
+	CP	0FFH		; 
+	jr	Z,DONECONF	; 
+	LD	(DE),A		; 
+	INC	C		; 
+	INC	DE		; 
+	INC	HL		; 
+	jr	NEXTCONF	; 
+DONECONF:			; 
+	LD	A,C		; 
+	DEC	A		; 
+	LD	(DRNO),A	; 
+	LD	A,2		; 
+	LD	(MAXFLOPPY),A	; 
+	LD	HL,LD541	; 
+	LD	DE,LF336	; 
+	LD	BC,3		; 
+	LDIR			; 
+	RET			; 
+;
+;
+;
+;
+;
+;
+GETDPBADDR:			; 
+	LD	DE,DPBSIZE	; 
+	LD	B,8		; 
+	LD	A,(HL)		; 
+	AND	0F8H		; 
+	LD	HL,DPBLK0	; 
+	OR	A		; 
+	JR	Z,DPBOK		; 
+SKIPDPBS:			; 
+	ADD	HL,DE		; 
+	SUB	B		; 
+	JR	NZ,SKIPDPBS	; 
+DPBOK:				; 
+	LD	DE,(CURFCB)	; 
+	EX	DE,HL		; 
+	LD	(HL),E		; 
+	INC	HL		; 
+	LD	(HL),D		; 
+	LD	DE,DPBSIZE	; 
+	ADD	HL,DE		; 
+	LD	(CURFCB),HL	; 
+	RET			; 
+;
+;
+; BC,(DE):= HL+BC ;  (HL:= HL+OLDBC+2) ??
+SAVEHLBC2DE:			; 
+	ADD	HL,BC		; 
+	EX	DE,HL		; 
+	LD	(HL),E		; 
+	INC	HL		; 
+	LD	(HL),D		; 
+	INC	HL		; 
+	EX	DE,HL		; 
+	LD	B,H		; 
+	LD	C,L		; 
+	RET			; 
+
+	if	$ ge biosbase
+	>> INIT del overlapper resident bios <<
+	endif
+
+	DS	BIOSBASE-$	; Fyld op med tomme
+

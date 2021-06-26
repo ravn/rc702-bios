@@ -1,0 +1,36 @@
+	subttl	File: CDEF.MAC
+
+
+; ----------------------------------------------------------------------
+;
+; Denne fil indeholder faelles globale definitioner til alle Cbios.MAC moduler.
+;
+; ---------------------------------------------------------------------- 
+
+		.tfcond		; Normalt listes falske if ikke.
+		page	47	; Udskriv i format passende til OKI1
+	
+no		equ	0
+yes		equ	not no
+
+fb$ena		equ	no	; Tillad fore/background med CTRL-T/U/V
+LS$ena		equ	no	; Ingen LineSelector i MIN bios.
+
+kbdsize		equ	32	; 32 tegn kbd buffer
+siosize		equ	128	; 128 tegn sio buffer, giver 0.5 sek buffer
+				; Specielt vigtig ved linieskift
+
+crt26		equ	yes	; Skal bare v{re defineret for at ops{tte CRT
+				; korrekt.  
+
+SysReqkey	equ	8ch	; CLEAR tasten er SysReqKey.
+
+;------------------------------- St|rrelsen af drev A: og B:  (8")
+
+disk8sect	equ	74	; Benyt antal spor (normal 60).  Max er 75.
+d8blocksize	equ	2	; Allokering sker i 2 kb's blokke.
+
+disk8size	equ	disk8sect* 15/d8blocksize  	
+				; 15 = 120 sekt/8 sekt pr kb
+UseHD		equ	no	; Inkluder ikke HardDisk rutiner  910404
+
