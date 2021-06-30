@@ -1,0 +1,20 @@
+	.z80
+	
+	include	CMACROS.MAC
+	
+	hexnibbledb	3
+	hexnibbledb	15
+	
+	hexdb		1
+	hexdb		17
+	HEXDB		255
+	HEXDB		127
+	
+	HEXWDB		1
+	HEXWDB		17
+	HEXWDB		255
+	HEXWDB		256
+	HEXWDB		0FFFFH
+	
+	END
+	

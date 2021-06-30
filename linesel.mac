@@ -1,0 +1,57 @@
+; 
+; RC nonstandard facility -- masket ud
+;
+; LINESELECTOR
+;   A=PORT; B=FUNCTION(RELEASE,A,B); RETURN:A=255=OK A=0=ERROR
+;
+LINESEL:			; 
+
+	iff	LS$ena		; Hvis ikke defineret, s} returner true
+	 ld	a, true
+	 ret
+	else			; ellers udfoer oprindelig kode
+	
+	ADD	A, T$Ctrl	; 
+	LD	C,A		; 
+LINESELREADY:			; 
+	DI			; 
+	LD	A,1		; 
+	OUT	(C),A		; 
+	IN	A,(C)		; 
+	EI			; 
+	AND	1		;** ALL SENT??
+	JR	Z,LINESELREADY	; 
+	LD	D,5		; 
+	LD	A,0		; 
+	CALL	OUTA2D		;** LOWER DTR & RTS
+	DEC	B		; 
+	RET	M		; 
+	SLA	B		; 
+	OR	B		; 
+	CALL	OUTA2D		; 
+	OR	80H		; 
+	CALL	OUTA2D		; 
+	LD	HL,2		; 
+	CALL	WAITHL		; 
+	LD	A,C		; 
+	CP	T$Ctrl		; 
+	LD	A,(T$RR0)	; 
+	jr	Z,LINEEXIT	; 
+	LD	A,(L$RR0)	; 
+LINEEXIT:			; 
+	AND	' '		; 
+	jr	Z,OUTA2D	; 
+	LD	A,True		; 
+	RET			; 
+;
+;SHIPS THE VALUE OF A TO REGISTER D OF DEVICE C
+OUTA2D:				; 
+	DI			; 
+	OUT	(C),D		; 
+	OUT	(C),A		; 
+	EI			; 
+	RET			; 
+	
+	endif			; --- slut p} oprindelig kode til LINESEL:
+	
+

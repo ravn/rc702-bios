@@ -1,30 +1,47 @@
 ;---------------------------------------------------------------------------
+;
+; Rc702 CP/M bios.  Disassembled and customized by Thorbj|rn Andersen 
+; 9101->  (LaTex: Thorbj{\o}rn).  Comments written in English 9105
+;
+;--------------------------------------------------------------------------
+;
+; This version has been modified as follows:
+;
+;
+; Keyboard and AuxIn now has an interrupt driven buffer (allows "typeahead")
+;
+; CRT circuit shows 26 lines.  Line 26 is driven by STATL.MAC
+;
+; Canceled CONOUT Control char sequences has been changed towards VT52 level
 ; 
-; Rc702 CP/M Bios som disassembleret af Thorbj|rn 9101
+; CDEF.MAC contains the user modifiable options.
 ;
-; Denne version er den oprindelige Rc bios med f|lgende {ndringer:
-;
-; Keyboard og AuxIn er underlagt interrupt buffer (queue)
-; Crt kredsen klarer 26 linier -- linie 26 skal indeholde ur og statusinfo
-; Fore/Background muligheden (CONOUT.MAC) er flaget ud.
-;
-; Se CDEF.MAC for globale {ndringsmuligheder 
+; A status line menu has been added for RunTime adjustments of behavior
 ; -------------------------------------------------------------------------
 ;
-; Diverse steder i dokumentationen referers til X.Y hvilket betyder den
-; Y'ende bit af X.
+; Notes:
 ;
-; Bootloaderen indl{ser hele bios delen til adresse 0, og hopper til 
-; adresse 0.  Dette indeholder igen en JUMP til $380, som straks flytter
-; hele bios op p} plads.  Dette g|r at $380 bliver til $D700, og denne kode
-; er gengivet nedenfor.
+; Whenever X.Y is mentioned, it is referring to the Y'th bit of X when
+; Y is a digit.  Otherwise it may be an index in a record (Pascalwise)
 ;
-; $D500   er configurationsdatablok.
-; $D580-> er tegn konverteringstabellerne.  De flyttes straks til endelig
-;         placering i $F680..$F7FF.
+; In the PRN file, the subttl allways shows the name of the source file.
 ;
-; $D700   er starten p} initialiseringskoden og
-; $DA00   er starten p} den residente del af bios.
+; -------------------------------------------------------------------------
+; MEMORY MAP  (LOAD TIME)
+;
+; $0000	Bootloader reads whole bios image in here.  INIT.MAC code immediately
+;	moves it up high, and jumps to $D700.
+;
+; $D500	Long term Configuration datablock (See xxxx.MAC)
+; $D580	CONIN key map table. Will be moved to $F680
+; $D600	CONOUT char map.  Will be moved to $F700
+; $D700	INIT code.
+; =================== Start of permanent part of bios ============
+; $DA00	Resident part of bios, including dataareas.
+; $F680	CONIN key map.  Only low ascii (7 bit) is mapped (128 bytes)
+; $F700	CONOUT char map.  Mapping will only take place if semigraphics
+;	isn't active.
+; $F800	Start of screen memory (See CONOUT.MAC)
 ;
 ;---------------------------------------------------------------------------
 
@@ -32,24 +49,32 @@
 	subttl	File: C.MAC
 	.Z80
 
-	INCLUDE	CDEF.MAC	; Definer implementering
+	INCLUDE	CDEF.MAC	; Define implementation.
+	INCLUDE	CMACROS.MAC	; Macros for this
 	subttl	File: C.MAC
 
 	IF1
 	.PRINTX +----------------+
-	.PRINTX	! Rc700 BIOS     ! (C) Regnecentralen og undertegnede
+	.PRINTX	! Rc700 BIOS     I Th 91 ! 
 	.PRINTX +----------------+
 	ELSE
 	.PRINTX	..
-	.PRINTX	.** Second pass.
+	.PRINTX	.** Second pass **.
 	ENDIF
 
+	if	usephase
+	 aseg			;
+	 org	380h		;
+ 	 .PHASE	0D700H		; 
+	else
+	  dseg
+	endif
+				; The definitions below shows the parts
+				; of the disassembly I haven't cleaned yet.
+				; This primarily concerns the Configuration
+				; block.
 	
-	aseg
-	org	380h
-	.PHASE	0D700H		; 
-	
-True		equ	0FFh	; benyttes ved diverse status funktioner
+True		equ	0FFh	; Used by some status routines.
 False		equ	000h	;
 
 BIOSBASE	EQU	0da00h	;
@@ -69,67 +94,70 @@ CODELENGTH	EQU	2381H	;
 CONVLENGTH	EQU	0180H	; 
 CONVLOADADDR	EQU	0D580H	; 
 
-CRT0		EQU	0D520H		; 
-CRT1		EQU	0D521H		; 
-CRT2		EQU	0D522H		; 
-CRT3		EQU	0D523H		; 
-CTC0C		EQU	0D500H		; 
-CTC0T		EQU	0D501H		; 
-CTC1C		EQU	0D502H		; 
-CTC1T		EQU	0D503H		; 
-CTC2C		EQU	0D504H		; 
-CTC2T		EQU	0D505H		; 
-CTC3C		EQU	0D506H		; 
-CTC3T		EQU	0D507H		; 
-CURDISK		EQU	04H		; 
-CXB4Y		EQU	0D52CH		; 
+CRT0		EQU	0D520H	; 
+CRT1		EQU	0D521H	; 
+CRT2		EQU	0D522H	; 
+CRT3		EQU	0D523H	; 
+CTC0C		EQU	0D500H	; 
+CTC0T		EQU	0D501H	; 
+CTC1C		EQU	0D502H	; 
+CTC1T		EQU	0D503H	; 
+CTC2C		EQU	0D504H	; 
+CTC2T		EQU	0D505H	; 
+CTC3C		EQU	0D506H	; 
+CTC3T		EQU	0D507H	; 
+CURDISK		EQU	04H	; 
+CXB4Y		EQU	0D52CH	; 
 DEFDMAAREA	EQU	80H	; 
 DMA0INIT	EQU	0D51CH	; 
 DMA2INIT	EQU	0D51EH	; 
 DMA3INIT	EQU	0D51FH	; 
-DPBSIZE		EQU	0FH		; 
+DPBSIZE		EQU	0FH	; 
 FCBINITDATA	EQU	0D524H	; 
 IFLOPCONF	EQU	0D52FH	; 
-IHDCONF		EQU	0D531H		; 
-IOBYTE		EQU	03H		; 
-LC409		EQU	0C409H		; 
-LD526		EQU	0D526H		; 
-LD540		EQU	0D540H		; 
-LD541		EQU	0D541H		; 
-LD544		EQU	0D544H		; 
-LD545		EQU	0D545H		; 
-LD546		EQU	0D546H		; 
+IHDCONF		EQU	0D531H	; 
+IOBYTE		EQU	03H	; 
+LC409		EQU	0C409H	; 
+LD526		EQU	0D526H	; 
+LD540		EQU	0D540H	; 
+LD541		EQU	0D541H	; 
+LD544		EQU	0D544H	; 
+LD545		EQU	0D545H	; 
+LD546		EQU	0D546H	; 
 LINELENGTH	EQU	4FH	; 
-LOADADDR	EQU	0100H	; 
+LOADADDR	EQU	0100H	;
 PRINTBYTE	EQU	0D519H	; 
 PRINTINIT	EQU	0D511H	; 
 SCREENLENGTH	EQU	07CFH	; 
 TERMBYTE	EQU	0D50EH	; 
 TERMINIT	EQU	0D508H	; 
 		PAGE		;
-;
-;
+;---------------------------------------------------------------
 ;
 ; RC700 BIOS DISASSEMBLET DEC. 1990/THORBJOERN
 ;
+; Start of overwritable initialization code.
 ;
 START:				; BEGIN
-
-		INCLUDE	INIT.MAC
+	INCLUDE	INIT.MAC
 	subttl	File: C.MAC
 
+	if	usephase
+	 ds	BIOSBASE-$	; Insert space for L80
+	else
+	 cseg
+	endif
 
 ;-------------------------------------------------------------------
 ;
-; Resident del af Rc700 bios.
-; 
-; Bios jump tabellen starter p} $DA00, for at v{re bagud kompatibel
+; Permanent part of the bios.
 ;
+; To maintain compabillity with several utilities does the biosbase
+; begin at $DA00.
 ;
 ;-------------------------------------------------------------------
 
 				;	.phase	BIOSBASE
-
 JPCOLDBOOT:			; 
 	JP	COLDBOOT	; 
 JPWARMBOOT:			; 
@@ -149,73 +177,65 @@ JPWARMBOOT:			;
 	JP	DSKWRITE	; 
 	JP	ListSt		; 
 	JP	SECTRAN		; 
-XB4Y:				; Forventes X f|r Y i en GotoXY??
-	DB	0		; 
-TERMBITS:			; 
-	DB	0		; 
-PRINTBITS:			; 
-	DB	0		; 
-	db	0		; Ukendt brug!
+				; Ready for nonstandard data area.
+
+XB4Y:		DB	0	; Do we have X before Y in a GotoXY?
+TERMBITS:	DB	0	; AuxIn/Out bytelength information (5-8 bits)
+PRINTBITS:	DB	0	;    LstOut bytelength information (5-8 bits)
+
+		db	0	; Unknown use.
 ;
+; Drive configuration.   Room for all 16 drives.
 ;
-; 0=SS/SD, 8=DS/DD, 10=5".  Resten er diverse Harddisk configs.
+; $00= 8" SS/SD, $08= 8" DS/DD, $10=5".  
+; $16= Special page 0 head 1 format. 
+; $FF= Not present
+; The rest is various HD formats.
 ;
-;
-DR0:				; Konfiguration for 16 drev.
-	DB	0FFH,0FFH	; 
-DR2:				; Drev C p} harddisken
-	DB	0FFH		; 
-DRVHDCONF:			; 
+DR0:	DB	0FFH,0FFH	; Drives A: and B:
+DR2:	DB	0FFH		; Drive C: is set up by HDSelect.
+
+DRVHDCONF:			; The rest of the HD drives.
 	DB	0FFH,0FFH,0FFH,0FFH,0FFH,0FFH,0FFH
 	DB	0FFH,0FFH,0FFH,0FFH,0FFH,0FFH
 ;
-;HVIS NUL BOOTES FRA FLOPPY ELLERS HARDDISK
-BOOTDRIVE:			; 
-	NOP			; 
-	OR	A		; 
-	RET	Z		; 
-JPBIOS47:			; WaitForFloppyInterrupt??
-	JP	WAITFIT		; 
-JPAUXSTATUS:			; 
-	JP	AuxStatus	; 
-JPLINESEL:			; 
-	JP	LINESEL		; 
-JPEXIT:				; 
-	JP	EXIT		; 
-JPCLOCK:			; 
-	JP	CLOCK		; 
-JPBIOS5C:			; 
-	IF 	UseHD
-	 JP	LE954		; -- Send kommando til HD controller
-	else
-	 JP	0		; Warmboot p} fors|g p} at skrive til HD
+; If Zero then the boot was from floppy, otherwise from the harddisk
+BOOTDRIVE:	NOP			; 
+		OR	A		; 
+		RET	Z		; 
+
+jpFDCst:	JP	Wait$FDC$RES	; Wait for FDC to be done with operation
+JPAUXSTATUS:	JP	AuxStatus	; 
+JPLINESEL:	JP	LINESEL		; 
+JPEXIT:		JP	EXIT		; 
+JPCLOCK:	JP	CLOCK		; 
+
+JPBIOS5C:				; 
+	IF 	UseHD			;
+	 JP	LE954			; -- Send command to HD controller
+	else				;
+	 JP	0			; Warmboot when trying to write to HD
 	endif
 
-JPRESERVED:			; 
-	DS	0013H		; 
+JPRESERVED:				; 
+	DS	0013H			; 
 
 ;	end of jump vectors.  Include some buffer stuff
 ;
-	INCLUDE	QUEUE.MAC
-	subttl	File: C.MAC
 
-kbdbuf:	queue	kbdsize		; SIO bufferen defineres i SERIAL.MAC
+LDA6F:	DW	0		; 
 
-LDA6F:				; 
-	DW	0		; 
-DISKERRMSG:		
-	DB	0DH,0AH,'Disk read error - reset  :(',0DH,0AH,0
-SIGNONMSG:		
-	DB	0CH,    'Rc702 bios version 910404',0DH,0AH,0
+DISKERRMSG:	DB	0DH,0AH,'Disk read error - reset  :(',0DH,0AH,0
+
+	INCLUDE	SIGNON.MAC
+
 	if	UseHD
-WAITMSG:		
-	 DB	0CH,    'Waiting',                            0 	
-CANNOTMSG:		
-	 DB	0CH,    'Cannot read configuration record',   0DH,0AH,0
+WAITMSG:	DB	0CH,    'Waiting',                          0 	
+CANNOTMSG:	DB	0CH,    'Cannot read configuration record', 0DH,0AH,0
 	endif
 
-;
-;UDSKRIVER EN ASCIIZ STRENG TIL SKAERMEN
+; PRINTSTR:
+; Prints an ASCIIZ string to console
 ;
 
 PRINTSTR:			; PROCEDURE PrintStr(HL:^STR);
@@ -231,99 +251,56 @@ PRINTSTR:			; PROCEDURE PrintStr(HL:^STR);
 DISKERR:			; 
 	LD	HL,DISKERRMSG	; 
 	CALL	PRINTSTR	; 
-WAITRESET:			; 
-	jr	WAITRESET	; 
+WAITRESET:			; Should be made to RETURN try again.
+	jr	WAITRESET	; Fortunately obsolete under Z-System
 
 
+; EXIT:   (Sets up routine to be called in a given number of ticks)
 ;
-;
-;EXIT.  HL=^(EXITROUTINE),  DE=COUNT (SECS/50)
+; HL=Addr(ExitRoutine),  DE= Ticks (secs/50)
 ;
 
 EXIT:				; 
-	LD	A,0C3H		; Ops{t jump....
+	LD	A,0C3H		; Set up jump...
 	LD	(EXJP),A	; 
 	LD	(EXJPADDR),HL	; 
 	EX	DE,HL		; 
-	LD	(EXITCOUNT),HL	; og s{t t{lleren
+	LD	(EXITCOUNT),HL	; and init the counter
 	RET			; 
+
+; CLOCK:  (Sets or reads the clock (counter version only))
+; 
+; 
+; A=0 : Set clock to (HL, DE)
+; A=1 : Reads clock to (HL, DE) where HL is the high part.
 ;
-; CLOCK.  A=0 : S{t klokke,  A=1 : Hent klokke
-;
-CLOCK:				; 
-	DI			; 
-	OR	A		; 
+CLOCK:				; Modified 930424/Th
+	cp	0		; 
 	jr	Z,SETCLOCK	; 
+	cp	1
+	jr	Z,GETCLOCK
+	ld	hl, cl$yy	; HL:= YYMMDD area
+;	ld	de, cl$tt	; DE:= TTMMSS area
+	ret
+	
+GETCLOCK:
+	di
 	LD	DE,(CLOCKLOW)	; 
 	LD	HL,(CLOCKHIGH)	; 
 	EI			; 
 	RET			; 
 SETCLOCK:			; 
+	di
 	LD	(CLOCKLOW),DE	; 
-	LD	(CLOCKHIGH),HL	; Mangler her ikke en EI???
-	ei			; -- Tilf|jet 910309
+	LD	(CLOCKHIGH),HL	; EI added 910309 (could cause trouble)
+	ei			; 
 	RET			;
-	
-; 
-; RC nonstandard facility -- masket ud
-;
-; LINESELECTOR
-;   A=PORT; B=FUNCTION(RELEASE,A,B); RETURN:A=255=OK A=0=ERROR
-;
-LINESEL:			; 
-
-	iff	LS$ena		; Hvis ikke defineret, s} returner true
-	 ld	a, true
-	 ret
-	else			; ellers udfoer oprindelig kode
-	
-	ADD	A, T$Ctrl	; 
-	LD	C,A		; 
-LINESELREADY:			; 
-	DI			; 
-	LD	A,1		; 
-	OUT	(C),A		; 
-	IN	A,(C)		; 
-	EI			; 
-	AND	1		;** ALL SENT??
-	JR	Z,LINESELREADY	; 
-	LD	D,5		; 
-	LD	A,0		; 
-	CALL	OUTA2D		;** LOWER DTR & RTS
-	DEC	B		; 
-	RET	M		; 
-	SLA	B		; 
-	OR	B		; 
-	CALL	OUTA2D		; 
-	OR	80H		; 
-	CALL	OUTA2D		; 
-	LD	HL,2		; 
-	CALL	WAITHL		; 
-	LD	A,C		; 
-	CP	T$Ctrl		; 
-	LD	A,(T$RR0)	; 
-	jr	Z,LINEEXIT	; 
-	LD	A,(L$RR0)	; 
-LINEEXIT:			; 
-	AND	' '		; 
-	jr	Z,OUTA2D	; 
-	LD	A,True		; 
-	RET			; 
-;
-;SHIPS THE VALUE OF A TO REGISTER D OF DEVICE C
-OUTA2D:				; 
-	DI			; 
-	OUT	(C),D		; 
-	OUT	(C),A		; 
-	EI			; 
-	RET			; 
-	
-	endif			; --- slut p} oprindelig kode til LINESEL:
 	
 	if	UseHD
 ;-----------------------------------------------------------------------
 ;
-;
+; Several very wierd routines.  DON'T modify!  Fortunately I do not
+; need them!   :)
 ;
 SWAPD89ADB6F:			; 
 	 XOR	A		;SWITCH TO HARDDISK BOOT
@@ -342,8 +319,10 @@ MOVEDA6FD89A:			;
 	endif
 	page			;
 ;
+; COLDBOOT:
 ;
-;
+; Please note that this is in the permanent part.  NO circuit setup is
+; performed.
 ;
 COLDBOOT:			;PROCEDURE ColdBoot;
 	LD	SP,DEFDMAAREA	;BEGIN
@@ -353,10 +332,10 @@ COLDRESET:			;
 	XOR	A		;  CurDisk:= 0;
 	LD	(CURDISK),A	; 
 	LD	(FIRSTLOAD),A	;  FirstLoad=FALSE;
-	LD	A,(BOOTDRIVE)	;  (* Benyttes ved indgang til CCP *)
+	LD	A,(BOOTDRIVE)	;  (* Used by entry to the CCP *)
 	OR	A		; 
 	jr	Z,LDB94		;  IF BootDrive<>0 THEN
-	LD	A,2		;  BEGIN    (* S{t default disk til C:*)
+	LD	A,2		;  BEGIN    (* Set default disk to C: *)
 	LD	(CURDISK),A	;    CurDisk:= 2;
 LDB94:				;  END;
 	XOR	A		; 
@@ -374,7 +353,7 @@ LDB94:				;  END;
 	CALL	DSKHOME		;        DrNo:= 0
 	LD	A,B		;      ELSE
 	AND	10H		;        DrNo:= 1;
-	LD	A,0		; 
+	LDA0			;
 	jr	NZ,LDBBE	;    END;
 	INC	A		;    WarmBoot;
 LDBBE:				;  END;
@@ -394,7 +373,7 @@ BOOTDISKOK:			;  SelectDrive(BootFrom)
 	LD	(UNACNT),A	; 
 	LD	(IOBYTE),A	;  IObyte:= 0;
 	LD	(CURDRIVE),A	;  CurrentDrive:= A:;
-;	LD	(KEYREADY),A	;  (* Zap(Keybuffer); *)
+;	LD	(KEYREADY),A	;  (* Zap(Keybuffer); Not used with buffer *)
 	CALL	DSKHOME		;  DiskHome(BootFrom);
 				;
 				;OK - BIOS IS OK - LET'S LOAD THE CCP & BDOS
@@ -423,8 +402,8 @@ NEXTCCPBLOCK:			;  FOR Sector:= 0 TO 43 DO
 	LD	A,C		; 
 	CP	44		;  END;
 	jr	NZ,NEXTCCPBLOCK	; 
-				; Indl{sning f{rdig.  Nu ops{ttes de
-	LD	BC,DEFDMAAREA	; sidste variable jvf CP/M specs
+				; Disk reads done.  Now setup the last
+	LD	BC,DEFDMAAREA	; variables to confirm to CP/M specs.
 	CALL	SETDMA		; 
 	LD	A,0C3H		;  SetDma( $80);
 	LD	(0),A		; 
@@ -438,10 +417,10 @@ NEXTCCPBLOCK:			;  FOR Sector:= 0 TO 43 DO
 	LD	C,A		; 
 	LD	A,(BOOTDRIVE)	; 
 	CP	C		; 
-	JR	Z,WBDRIVEOK	; hvis den nuv{rende disk ikke kan selectes
-	CALL	SELDSK		; eller der ikke kan l{ses noget af direc-
-	LD	A,H		; toriet, s} logges der over p} bootdrevet
-	OR	L		; (* Forhindrer deadlock ved SELECT ERROR *)
+	JR	Z,WBDRIVEOK	; If the current disk cannot be selected or
+	CALL	SELDSK		; the directory is unreadable, then we will
+	LD	A,H		; log in the bootdrive.  (* This should
+	OR	L		; avoid deadlock at select error *)
 	JR	Z,SWITCHTOBOOT	; 
 	LD	BC,2		; 
 	CALL	SETTRK		; 
@@ -462,7 +441,7 @@ WBDRIVEOK:			;
 	endif
 	CALL	SELDSK		; 
 	LD	A,(CURDISK)	; 
-	LD	C,A		;  C:= CurrentDrive; (* Kr{ves af ccp *)
+	LD	C,A		;  C:= CurrentDrive; (* Req. by ccp *)
 	LD	HL,FIRSTLOAD	; 
 	LD	A,(HL)		;  
 	LD	(HL),1		;  
@@ -496,38 +475,39 @@ INTDISPLAY:			; PROCEDURE IntDisplay;
 	PUSH	HL		; BEGIN
 				;
 				;SETUP DMA FOR SCREEN REFRESH - Channel 2
+				;---------
 				;
-	IN	A,(CRTctrl)		; Hent CRT status register - ubrugt.
-	LD	A,00000110b		; 
-	OUT	(dmasinglebit),A 	; S{t bit for kanal 2 og 3
-	LD	A,00000111b		; 
-	OUT	(dmasinglebit),A 	; Slet flip/flop og g|r klar til 
-	OUT	(dmaclrff),A		; ord overf|rsel.
-	LD	HL,SCREENBASE		; 
-	LD	A,L			; DMA[2].BaseAddress:= Screenbase;
-	OUT	(0F4H),A		; 
-	LD	A,H			; 
-	OUT	(0F4H),A		; 
-	LD	HL,SCREENSIZE		; 
-	LD	A,L			; DMA[2].WordCount:= Screenlength;
-	OUT	(0F5H),A		; 
-	LD	A,H			; 
-	OUT	(0F5H),A		; 
-	LD	A,0			; 
-	OUT	(0F7H),A		; DMA[3].WordCount:= 0;  (* Inaktiv *)
-	OUT	(0F7H),A		; 
-	LD	A,00000010b		; 
-	OUT	(dmasinglebit),A	; 
-	LD	A,00000011b		; 
-	OUT	(dmasinglebit),A	; Udmask kanal 2 og 3.
-	LD	A,11010111b		; CTC[2].Control:= Interrupt+ Counter+
-	OUT	(0EH),A			;   16xValue+ RisingEdge+ 
-	LD	A,1			;   TimeConstant+ SoftwareReset;
-	OUT	(0EH),A			; CTC[2].TimeConstant= 1;
-					; 
+	IN	A,(CRTctrl)	; Get the CRT status register (unused)
+	LD	A,00000110b	; 
+	OUT    (dmasinglebit),A	; Mask in channel 2 and 3.
+	LD	A,00000111b	; 
+	OUT    (dmasinglebit),A	; Reset flip/flop (word hi/low) and get
+	OUT	(dmaclrff),A	; ready for word transmission.
+	LD	HL,SCREENBASE	; 
+	LD	A,L		; DMA[2].BaseAddress:= Screenbase;
+	OUT	(0F4H),A	; 
+	LD	A,H		; 
+	OUT	(0F4H),A	; 
+	LD	HL,SCREENSIZE	; 
+	LD	A,L		; DMA[2].WordCount:= Screenlength;
+	OUT	(0F5H),A	; 
+	LD	A,H		; 
+	OUT	(0F5H),A	; 
+	LDA0			; 
+	OUT	(0F7H),A	; DMA[3].WordCount:= 0;  (* Inactive *)
+	OUT	(0F7H),A	; 
+	LD	A,00000010b	; 
+	OUT    (dmasinglebit),A	; 
+	LD	A,00000011b	; 
+	OUT    (dmasinglebit),A	; Mask out channel 2 and 3.
+	LD	A,11010111b	; CTC[2].Control:= Interrupt+ Counter+
+	OUT	(0EH),A		;   16xValue+ RisingEdge+ 
+	LD	A,1		;   TimeConstant+ SoftwareReset;
+	OUT	(0EH),A		; CTC[2].TimeConstant= 1;
+				; 
 				;
-				; --UPDATE REAL TIME CLOCK
-				;
+				; UPDATE REAL TIME CLOCK
+				; ----------------------
 	LD	HL,CLOCKLOW	;   Clock[0]:= Clock[0]+1;
 	INC	(HL)		;   IF Clock[0]=0 THEN
 	jr	NZ,INTCHECKEXIT	;   BEGIN
@@ -539,8 +519,14 @@ INTDISPLAY:			; PROCEDURE IntDisplay;
 	jr	NZ,INTCHECKEXIT	;       
 	INC	HL		;         Clock[3]:= Clock[3]+1;
 	INC	(HL)		;     END;
+
 INTCHECKEXIT:			;   END;
-	LD	HL,(EXITCOUNT)	; 
+
+	if	UseClock	;
+	 call	tick		; Update the Clock
+	endif
+
+	LD	HL,(EXITCOUNT)	;   (* Check for exit routine activation *)
 	LD	A,L		;   IF ExitCount<>0 THEN
 	OR	H		;   BEGIN
 	jr	Z,NOEXITNOW	;     ExitCount:= ExitCount-1;
@@ -548,8 +534,8 @@ INTCHECKEXIT:			;   END;
 	LD	A,L		;       ExitProc;
 	OR	H		;   END;
 	LD	(EXITCOUNT),HL	; 
-	CALL	Z,EXJP	; 
-NOEXITNOW:			; 
+	CALL	Z,EXJP		; 
+NOEXITNOW:			;   (* Do we need to stop the disk motor *)
 	LD	HL,(MOTORCOUNT)	;   IF MotorCount<>0 THEN
 	LD	A,L		;   BEGIN
 	OR	H		;     MotorCount:= MotorCount-1;
@@ -581,12 +567,16 @@ IntIgnore:			;
 				;
 	page
 
-IntVectPage	equ	($ OR 0FFH)+1	;  N{ste Hele side
+	ds 100h-(($-JPCOLDBOOT) AND 0ffh)	;  Next page boundary
 
-		DS	IntVectPage-$	;  Fyld lige op til
+; 
 ;
-;INTERRUPT VECTOR PAGE.  Skal ligge p} INTPAGE variablen (default $EC00)
+;INTERRUPT VECTOR PAGE.  
 ;
+;
+
+INTERRUPTPAGE::
+
 	DW	IntIgnore	; 
 	DW	IntIgnore	; 
 	DW	INTDISPLAY	; 
@@ -602,28 +592,27 @@ IntVectPage	equ	($ OR 0FFH)+1	;  N{ste Hele side
 				; SIO interrupts
 				; Port A= Terminal port, Port B=Printer
 				;
-	DW	BtxbEmpty	;   INTLST	; Har sendt tegn
+	DW	BtxbEmpty	;   INTLST	; Has sent char.
 	DW	BextStat	;   LDD22	; 
-	DW	BrxChar		;   INTAI	; Har modtaget tegn
+	DW	BrxChar		;   INTAI	; Has rec. char.
 	DW	BSpRxCond	;   INTLSTERROR	; 
-	DW	AtxbEmpty	;   INTAOERROR	; Har sendt tegn
+	DW	AtxbEmpty	;   INTAOERROR	; Has sent char
 	DW	AextStat	;   LDD86	; 
-	DW	ArxChar		;   LDD9F	; Har modtaget tegn
+	DW	ArxChar		;   LDD9F	; Has rec. char
 	DW	ASpRxCond	;   LDDB9	; 
 				;
-				; PIO interrupts
-	DW	KEYINTERRUPT	; 
+				; PIO interrupts.
+	DW	KEYINTERRUPT	; Not much fuss here.
 	DW	INTPAR		; 
 
-INTERRUPTPAG	equ	IntVectPage/256
 
-;*	DW	IntVectPage	; Highbyte skal I registeret s{ttes til.
-;** KEYREADY:	DB	0	; **Tegn klar fra tastaturet ?
+;** KEYREADY:	DB	0	; ** Char ready from keyboard??
 
-PARREADY:	DB	0	; Parallel porten klar?
+PARREADY:	DB	0	; Is the Parallel port ready?
+
 ;
-; Den eneste interruptrutine som parallelporten har (den lille stakkel)
-;
+; The only interrupt routine the parallelport has. (Poor little thing)
+; It is dreadly dull.
 ;
 INTPAR:				; PROCEDURE ParallelInterrupt;
 	LD	(SAVESP),SP	; BEGIN
@@ -636,39 +625,43 @@ INTPAR:				; PROCEDURE ParallelInterrupt;
 	EI			; 
 	RETI			; 
 
+	INCLUDE	QUEUE.MAC
 
-KEYSTATUS:			; FUNCTION KeyStatus: BOOLEAN; (* Keypressed *)
-;	LD	A,(KEYREADY)	; BEGIN
-;	RET			;   KeyStatus:= NOT(KbdBuffer.Empty);
-	push	ix		;
-	ld	ix, kbdbuf	;
-	call	q$empty		;
-	pop	ix		;
-	ld	a,0		;
-	ret	z		;
-	dec	a		;
-	ret			;
-				; END;
-READKEY:			
-	call	keystatus	; 
-	OR	A		; FUNCTION ReadKey: CHAR;
-	jr	Z,READKEY	; BEGIN
-	ld	ix, kbdbuf	;   (* Interrupt kode flyttet til KeyInt *)
-	call	q$get		;   ReadKey:= QueueGet(KbdQueue);
-	ret			; END;
+	INCLUDE	CONIN.MAC	; Keyboard input
 
-	INCLUDE	KEYINT.MAC
-	page
-	INCLUDE	SERIAL.MAC	; Inkluder serielle rutiner
+	if	UseClock
+	 INCLUDE	CLOCK.MAC
+	 page
+	endif
+
+	INCLUDE	STATL.MAC	; Statusline update/select
 	page
 
-	INCLUDE	CONOUT.MAC	; Test af conout
+	INCLUDE	KEYINT.MAC	; The KEYBOARD menu routines.
 	page
 
-	INCLUDE	DISKIO.MAC	; (* Alle floppy/harddisk rutiner + tables *)
+	INCLUDE	SERIAL.MAC	; The SERIAL PORT routines.
+	page
 
-eocode::	db	'## end of code ##'
+	INCLUDE	CONOUT.MAC	; The CONOUT routines (All screen management)
+	page
+
+	INCLUDE	DISKIO.MAC	; (* All Floppy/Harddisk routines *)
+	page
+
+	INCLUDE	LINESEL.MAC	; (* lineselector routine *)
+
+bioscodeend::	
+	db	0
 
 	INCLUDE	CDATA.MAC	;
-	end			;
-
+
+	if	usephase
+	.dephase
+	endif
+				; 
+	end			; 
+;
+; That is most definately all, folks.
+;
+

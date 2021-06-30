@@ -1,0 +1,110 @@
+;------------------------------------------------------------------------
+;
+;  CLOCK.MAC
+;
+;  Runs a clock, which is driven by the 50 interrupts/sec coming from
+;  the screen refresh routine.  Exported to STATL.MAC is the routine
+;  CL$STAT, which contains the clock (hh:mm)		Th 910420
+;
+;  910423   After having a lot of trouble with the clock going bananas
+;           regarding the passing of time, I have found out that the
+;           carry needs to be zero before the usage of DAA.
+;-----------------------------------------------------------------------
+	subttl	File: CLOCK.MAC
+
+ticks	equ	50		; Per second
+
+cl$yy:	db	93h		; YY MM DD
+cl$mm:	db	04h		;
+cl$dd:	db	19h		;
+
+cl$tim:	db	0		; We start at 00:00:00
+cl$min:	db	0		;
+cl$sec:	db	0		; This order is made to use DEC instead of
+cl$tck:	db	ticks		; LD in the update routine.
+
+tick1	macro	maximum, exit
+	ld	a, (hl)		;
+	inc	a		;   (hl):= bcd((hl)+1);
+	daa			;
+	ld	(hl),a		;   if (hl)>=c then (hl):= 0; cy:=1; ELSE cy:=0;
+	cp	maximum		;
+	jp	m, exit		;
+	ld	(hl), 0		;
+	endm
+
+tick::				; *** This routine is called 50 times a second
+	or	a		; CY:= 0;
+	ld	hl,cl$tck	;
+	dec	(hl)		;
+	ret	nz		; IF (DEC(tickcount))= 0 THEN
+	ld	(hl), ticks	; BEGIN
+	dec	hl		;   tickcount:= ticks;
+				;   seconds:= bcd(seconds);
+	tick1	60h, x$clst	;   IF seconds>= $60 THEN BEGIN
+	dec	hl		;     seconds:= 0;
+	tick1	60h, x$tick	;     minutes:= bcd(minutes);
+	dec	hl		;  END;
+	tick1	24h, x$tick	;
+x$tick:	ld	hl, cl$stat	;
+	jp	u$statl		; Update ClockStatuslinie
+
+
+; ***************
+; CL$STAT
+;
+; Updates the statusline, so it is ready to be shown (see STATL.MAC).
+; This is done by converting hours, minutes and perhaps seconds from
+; bcd to hex, and insert it in the statusline buffer.
+
+cl$stat:
+;	ld	a, (cl$sec)	;
+;	call	c$bcd		; I do not want to see the seconds tick by
+;	ld	(cl$m$s), hl	;
+	ld	a, (cl$min)
+	call	c$bcd
+	ld	(cl$m$m), hl
+	ld	a, (cl$tim)
+	call	c$bcd
+	ld	(cl$m$h),hl
+
+	ld	a, (cl$mm)
+	call	c$bcd
+	ld	(cl$m$o), hl
+	ld	a, (cl$dd)
+	call	c$bcd
+	ld	(cl$m$d), hl
+	ld	hl, cl$msg
+x$clst:	ret
+
+cl$msg:
+	db	80h,'                       ' ; 80h= No semigraphics
+cl$m$d:	db	'00/'
+cl$m$o:	db	'00 '
+cl$m$h:	db	'00:'
+cl$m$m:	db	'00'
+;cl$m$s:	db	'00'			    ; Seconds is currently ignored
+	db	0
+
+c$bcd:				;  HL:= BCD(a);  
+	ld	h,a		;
+	and	0f0h		;  (* This could be done more efficiently
+	rrca			;     but I was too lazy to look it up *)
+	rrca
+	rrca
+	rrca
+	add	a,'0'
+	cp	'0'+10
+	jr	c, c$bcd1
+	add	a,'A'-'0'-10
+c$bcd1:	ld	l,a
+	ld	a,h
+	and	0fh
+	add	a,'0'
+	cp	'0'+10
+	jr	c, c$bcd2
+	add	a,'A'-'0'-10
+c$bcd2:	ld	h,a
+	ret
+
+; *** END OF CLOCK MODULE ***

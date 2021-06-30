@@ -1,6 +1,6 @@
 ;---------------------------------------------------------------
 ;
-; Alle FDC/HDC rutiner er samlet her
+; All the FDC/HD routines are collected in this module.
 ;
 ;
 ;---------------------------------------------------------------
@@ -12,12 +12,14 @@ SELDSK:				;
 	ADD	HL,SP		; 
 	LD	SP,BIOSSTACK	; 
 	PUSH	HL		; 
+
 	LD	HL,0		; 
 	LD	A,(DRNO)	; 
 	CP	C		; 
 	JP	C,XSELDSK	; 
 	LD	A,C		; 
-	; indsat 910404 for at give select fejl automatisk p} C: osv. 
+	; put in 910404 to give select error on drive C: in all circum-
+	; stances
 	IFf	UseHD
 	 cp	2
 	 jp	nc, xseldsk
@@ -32,8 +34,8 @@ NEXTDPH:			;
 	OR	A		; 
 	jr	Z,FOUNDDPH	; 
 	INC	DE		; 
-	ADD	HL,BC		; 
-	DEC	A		; 
+	ADD	HL,BC		; DE:= @DR0+ DskNr
+	DEC	A		; HL:= 16* DskNr
 	jr	NEXTDPH		; 
 ;
 ;
@@ -49,7 +51,7 @@ FOUNDDPH:			;
 	PUSH	AF		; 
 	PUSH	BC		; 
 	LD	A,(HSTWRT)	; 
-	OR	A		; 
+	OR	A		; If the disk buffer is dirty then do a write.
 	CALL	NZ,WRITEHST	; 
 	XOR	A		; 
 	LD	(HSTWRT),A	; 
@@ -67,7 +69,7 @@ SELN:				;
 	INC	HL		; 
 	INC	HL		; 
 	LD	A,(HL)		; 
-	LD	(EOTV),A	; 
+	LD	(EOTV),A	; EOTV:= FDF[ Cform, 4];
 	PUSH	BC		; 
 	LD	A,(CFORM)	; 
 	AND	0F8H		; 
@@ -75,8 +77,8 @@ SELN:				;
 	RLA			; 
 	LD	E,A		; 
 	LD	D,0		; 
-	LD	HL,FSPAR0	; 
-	ADD	HL,DE		; 
+	LD	HL,FSPAR0	; DPBLK:= FSPAR[Cform]; 
+	ADD	HL,DE		;         ^^^^^ NOT DPH/DPB . !!!!
 	LD	DE,DPBLK	; 
 	LD	BC,10H		; 
 	LDIR			; 
@@ -99,8 +101,8 @@ SELN:				;
 	LD	HL,0AH		; 
 	ADD	HL,DE		; 
 	EX	DE,HL		; 
-	LD	A,(DPBLK)	; 
-	LD	(DE),A		; 
+	LD	A,(DPBLK)	; MOVE Skew address into the DPH, from
+	LD	(DE),A		; deblocking information
 	INC	DE		; 
 	LD	A,(DPBLK1)	; 
 	LD	(DE),A		; 
@@ -110,14 +112,16 @@ XSELDSK:			;
 	LD	SP,HL		; 
 	EX	DE,HL		; 
 	RET			; 
-FLASS:				; 
-	LD	HL,FDF1		; 
-	LD	A,(CFORM)	; 
-	AND	0F8H		; 
+
+FLASS:				; PROCEDURE Floppy.AssignFormat;
+	LD	HL,FDF1		; BEGIN
+	LD	A,(CFORM)	;   HL:= FDF[Diskformat];
+	AND	0F8H		; END;
 	LD	E,A		; 
 	LD	D,0		; 
 	ADD	HL,DE		; 
 	RET			; 
+
 SETTRK:				; 
 	LD	H,B		; 
 	LD	L,C		; 
@@ -133,32 +137,46 @@ SETDMA:				;
 	LD	L,C		; 
 	LD	(DMAAREA),HL	; 
 	RET			; 
-SECTRAN:			; No sector translation here
+SECTRAN:			; "We translate for NOBODY"
 	LD	H,B		; 
 	LD	L,C		; 
 	RET			;
 	page
-				; F|lgende rutiner er praktisk taget kopieret 
-DSKREAD:			; fra IIT bios, startende side 1-32
-	XOR	A		; 
+;**** Floppy READ SECTOR;
+; Return :  A=0 = OK;  A=1 = Error
+				; The following routines are very similar to
+DSKREAD:			; the ITT bios (starting page 1-32).  Changes
+	XOR	A		; are primarily because of the MAXSECTOR value
+				; doesn't fit in a byte anymore. (Harddisk)
+				;
 	LD	(UNACNT),A	; Clear unallocated count
+	ld	a, 'R'		;
+	ld	(dio$op),a	; Put 'R' in Disk status line
+	ld	hl, dio$st	; and update it.
+	call	u$statl		;
 	LD	A,1		; 
-	LD	(READOP),A	; ReadOpertion:= YES+
+	LD	(READOP),A	; ReadOpertion:= Yes;
 	LD	(RSFLAG),A	; ??
 	LD	A,2		; 
 	LD	(WRTYPE),A	; Write_Type:= Unallocated;
 	jp	RWOPER		; 
 
-;WRITE SECTOR.  RETUR A=0 NO ERRORS, A=1 NON-RECOVERABLE ERROR
+;WRITE SECTOR.  
+; RETURN A=0 NO ERRORS, A=1 NON-RECOVERABLE ERROR
 
 DSKWRITE:			; 
 	XOR	A		; 
-	LD	(READOP),A	; ReadOperation:= FALSE;
+	LD	(READOP),A	; ReadOperation:= NO; 
+	ld	a, 'W'		;
+	add	a, c		; (Show actual operation code)
+	ld	(dio$op),a	; Update the Disk status line with
+	ld	hl, dio$st	; 'W' as the operation.
+	call	u$statl		;
 	LD	A,C		; 
 	LD	(WRTYPE),A	; Get Write_Type from caller
 	CP	2		; 
 	jr	NZ,CHKUNA	; IF Write_Type=Unallocated THEN
-	LD	A,(CPMRBP)	; BEGIN
+	LD	A,(CPMRBP)	; BEGIN (* Set all variables to OK *)
 	LD	(UNACNT),A	;   UnACNT:= BlockSize/128;
 	LD	A,(SEKDSK)	;   UnaDSK:= Seek Disk;
 	LD	(UNADSK),A	; 
@@ -191,12 +209,12 @@ CHKUNA:				;
 	LD	HL,(UNASEC)	;     UnaSec:= UnaSec+1;
 	INC	HL		; 
 	LD	(UNASEC),HL	; 
-	EX	DE,HL		; 
-	LD	HL,LF354	; 
-	PUSH	BC		; 
+	EX	DE,HL		;   DE:= UNASEC  
+	LD	HL,CPMSPT	;   HL:= @CPMSPT
+	PUSH	BC		;   BC:= CPMSPT^ 
 	LD	C,(HL)		; 
 	INC	HL		; 
-	LD	B,(HL)		; 
+	LD	B,(HL)		;   => HL:= (UnaSEC) - (CPMSPT);
 	EX	DE,HL		; 
 	AND	A		; 
 	SBC	HL,BC		; 
@@ -209,27 +227,30 @@ CHKUNA:				;
 	LD	(UNATRK),HL	;     END;
 NOOVF:				; 
 	XOR	A		; 
-	LD	(RSFLAG),A	; 
+	LD	(RSFLAG),A	;   RsFLAG:= FALSe;
 	LD	A,(SECTOR)	; 
-	LD	HL,SECMSK	; 
+	LD	HL,SECMSK	;   UnaMSK:= (Sector AND  Sec-Msk);
 	AND	(HL)		; 
 	CP	(HL)		; 
-	LD	A,0		; 
+	LDA0			; 
 	jr	NZ,SETMSK	; 
 	INC	A		; 
 SETMSK:				; 
 	LD	(UNAMSK),A	; 
-	jr	RWOPER		; 
+	jr	RWOPER		;   => R/W operations
+
 ALLOC:				; 
 	XOR	A		; 
-	LD	(UNACNT),A	; 
-	LD	A,(SECMSK)	; 
+	LD	(UNACNT),A	;  UnaCnt:= 0;
+	LD	A,(SECMSK)	;  RsFLAG:= HostSize/ 128;
 	LD	(RSFLAG),A	; 
-RWOPER:				; 
-	LD	HL,0		; 
-	ADD	HL,SP		; 
-	LD	SP,BIOSSTACK	; 
-	PUSH	HL		; 
+RWOPER:				; PROCEDURE ReadWriteOperation;
+;	LD	HL,0		; (* BIOS RUTINE STACK *)
+;	ADD	HL,SP		; 
+;	LD	SP,BIOSSTACK	; 
+;	PUSH	HL		; BEGIN
+	
+	EnterBios
 	LD	A,(SECSHF)	; 
 	LD	B,A		; 
 	LD	HL,(SECTOR)	; 
@@ -238,50 +259,48 @@ RSECS:				;
 	jr	Z,SETSH		; 
 	SRL	H		; 
 	RR	L		; 
-	jr	RSECS		; 
+	jr	RSECS		;   SeekHst:= SeekSec/HstBlock;
 SETSH:				; 
-	LD	(SEKHST),HL	; 
-	LD	HL,HSTACT	; 
+	LD	(SEKHST),HL	;  
+	LD	HL,HSTACT	;  a:= HostActive; HostActive:= Yes;
 	LD	A,(HL)		; 
 	LD	(HL),1		; 
 	OR	A		; 
-	jr	Z,FILHST	; 
-	LD	A,(SEKDSK)	; 
+	jr	Z,FILHST	;  IF Host WAS Active AND
+	LD	A,(SEKDSK)	;  BEGIN
 	LD	HL,HSTDSK	; 
-	CP	(HL)		; 
-	jr	NZ,NOMATCH	; 
+	CP	(HL)		;     (* Check if exact match *)
+	jr	NZ,NOMATCH	;     IF SeekDsk= HostDisk AND
 	LD	HL,HSTTRK	; 
-	CALL	TRKCMP		; 
-	jr	NZ,NOMATCH	; 
+	CALL	TRKCMP		;   
+	jr	NZ,NOMATCH	;        SeekTrack= HostTrack AND   
 	LD	A,(SEKHST)	; 
 	LD	HL,HSTSEC	; 
 	CP	(HL)		; 
-	jr	NZ,NOMATCH	; 
-;
-;HER BURDE KODEN TIL MATCH V{RE
+	jr	NZ,NOMATCH	;        lo(SeekSector)= lo(HostSector) AND
 	LD	A,(SEKHST+1)	; 
 	INC	HL		; 
-	CP	(HL)		; 
-	jr	Z,MATCH		; 
-NOMATCH:			; 
-	LD	A,(HSTWRT)	; 
-	OR	A		; 
-	CALL	NZ,WRITEHST	; 
-FILHST:				; 
-	LD	A,(SEKDSK)	; 
-	LD	(HSTDSK),A	; 
-	LD	HL,(TRACK)	; 
-	LD	(HSTTRK),HL	; 
-	LD	HL,(SEKHST)	; 
-	LD	(HSTSEC),HL	; 
-	LD	A,(RSFLAG)	; 
-	OR	A		; 
-	CALL	NZ,READHST	; 
-	XOR	A		; 
-	LD	(HSTWRT),A	; 
-MATCH:				; 
-	LD	A,(SECTOR)	; 
-	LD	HL,SECMSK	; 
+	CP	(HL)		;        hi(SeekSector)= hi(SeekSector) THEN
+	jr	Z,MATCH		;        GOTO Match ----------------------------
+NOMATCH:			;    ELSE					!
+	LD	A,(HSTWRT)	;      WriteSectorToHost;			!
+	OR	A		;  END;						!
+	CALL	NZ,WRITEHST	; 						!
+FILHST:				;  (* Now the buffer is purged. Then fetch *) 	!
+	LD	A,(SEKDSK)	;  (* the new Hostsector in from diskette *)	!
+	LD	(HSTDSK),A	; 						!
+	LD	HL,(TRACK)	;  HostDisk:= SeekDisk;				!
+	LD	(HSTTRK),HL	;  HostTrack:= Seektrack;			!
+	LD	HL,(SEKHST)	;  HostSector:= SeekSector;			!
+	LD	(HSTSEC),HL	; 						!
+	LD	A,(RSFLAG)	; 						!
+	OR	A		; 						!
+	CALL	NZ,READHST	;  IF RsFlag THEN ReadHost;			!
+	XOR	A		; 						!
+	LD	(HSTWRT),A	;  Buffer is clean; (* HSTWRT is dirty bit *)	!
+MATCH:				;                                          <----
+	LD	A,(SECTOR)	;  (* Buffer contents is correct *)
+	LD	HL,SECMSK	;  (* Lets do something about it *)
 	AND	(HL)		; 
 	LD	L,A		; 
 	LD	H,0		; 
@@ -291,62 +310,65 @@ MATCH:				;
 	ADD	HL,HL		; 
 	ADD	HL,HL		; 
 	ADD	HL,HL		; 
-	ADD	HL,HL		; 
+	ADD	HL,HL		; HL:= 128 * (Sector AND SecMask);
 	LD	DE,HSTBUF	; 
-	ADD	HL,DE		; 
-	EX	DE,HL		; 
-	LD	HL,(DMAAREA)	; 
-	LD	BC,DEFDMAAREA	; 
-	EX	DE,HL		; 
-	LD	A,(READOP)	; 
-	OR	A		; 
-	jr	NZ,RWMOVE	; 
-	LD	A,1		; 
-	LD	(HSTWRT),A	; 
-	EX	DE,HL		; 
+	ADD	HL,DE		; IF ReadOperation THEN                         
+	EX	DE,HL		;   Move( HostBuf[(Sector AND SecMask)*128],    
+	LD	HL,(DMAAREA)	;         DmaArea,                              
+	LD	BC,128 		;         128)                                  
+	EX	DE,HL		; ELSE                                          
+	LD	A,(READOP)	; BEGIN                                         
+	OR	A		;   Move( DmaArea,                              
+	jr	NZ,RWMOVE	;         HostBuf[(Sector AND SecMask)*128],    
+	LD	A,1		;         128);                                 
+	LD	(HSTWRT),A	;   HostWrite:= Yes; (* Buffer dirty *)						
+	EX	DE,HL		; END;
 RWMOVE:				; 
 	LDIR			; 
-	LD	A,(WRTYPE)	; 
+	LD	A,(WRTYPE)	; IF ErrFlag THEN HostActive:= FALSE; (* No garbage *)
 	CP	1		; 
 	LD	HL,ERFLAG	; 
 	LD	A,(HL)		; 
-	PUSH	AF		; 
+	PUSH	AF		; ReturnValue= ErrFlag;
 	OR	A		; 
 	jr	Z,LE4E8		; 
 	XOR	A		; 
 	LD	(HSTACT),A	; 
 LE4E8:				; 
 	POP	AF		; 
-	LD	(HL),0		; 
-	jr	NZ,XRWMOVE	; 
-	OR	A		; 
-	jr	NZ,XRWMOVE	; 
-	XOR	A		; 
-	LD	(HSTWRT),A	; 
-	CALL	WRITEHST	; 
-	LD	HL,ERFLAG	; 
+	LD	(HL),0		;   ErrFlag:= FALSE;
+	jr	NZ,XRWMOVE	;   IF WrType= 1 AND
+	OR	A		;     ReturnValue=0 THEN (* No errors *)
+	jr	NZ,XRWMOVE	;   BEGIN
+	XOR	A		;     HostWrite:= Yes;
+	LD	(HSTWRT),A	;     WriteHost;
+	CALL	WRITEHST	;     ReturnValue:= ErrFlag;  
+	LD	HL,ERFLAG	;     ErrFlag:= 0;
 	LD	A,(HL)		; 
-	LD	(HL),0		; 
+	LD	(HL),0		;   END;
 XRWMOVE:			; 
-	POP	HL		; 
-	LD	SP,HL		; 
-	RET			; 
-TRKCMP:				; 
-	EX	DE,HL		; 
-	LD	HL,TRACK	; 
+	LeaveBios
+;	POP	HL		; 
+;	LD	SP,HL		; 
+;	RET			; END;
+
+TRKCMP:				; FUNCTION TrackCompare(DE=^SeekTrack: BOOLEAN;
+	EX	DE,HL		; BEGIN
+	LD	HL,TRACK	;   TrackCompare:= (DE^=Track);
 	LD	A,(DE)		; 
 	CP	(HL)		; 
-	RET	NZ		; 
+	RET	NZ		;   (* 16 bit compare *)
 	INC	DE		; 
 	INC	HL		; 
 	LD	A,(DE)		; 
 	CP	(HL)		; 
-	RET			; 
+	RET			; END;
+
 WRITEHST:			; 
 	IF	UseHD
 	 LD	A,(HDSELECTED)	; 
 	 OR	A		; 
-	 JP	NZ, WrtFLOPPY	; -- Burde hedde WriteHD istedet
+	 JP	NZ, Wrt$HD	; Have previosly been WrtFLOPPY. ###
 	endif
 	CALL	CHKTRK		; 
 	JP	SECWR		; 
@@ -363,80 +385,81 @@ RCHECK:				;
 	endif
 	CALL	CHKTRK		; 
 	JP	SECRD		; 
-CHKTRK:				; 
-	LD	A,(HSTSEC)	; 
-	LD	C,A		; 
-	LD	A,(EOTV)	; 
+;
+;*** CHECK TRACK
+;    Makes sure that the r/w head is positioned on the right track ready
+;    for the transfer.
+CHKTRK:				; PROCEDURE CheckTrack;  
+	LD	A,(HSTSEC)	; BEGIN
+	LD	C,A		;   Sector:= HostSector;
+	LD	A,(EOTV)	;   Head number 0;
 	LD	B,A		; 
-	DEC	A		; 
-	CP	C		; 
-	LD	A,(HSTDSK)	; 
-	jr	NC,SET1		; 
-	OR	4		; 
-	LD	(CURDRIVE),A	; 
+	DEC	A		;   
+	CP	C		;   IF HostSec>Eotv-1 THEN
+	LD	A,(HSTDSK)	;   BEGIN
+	jr	NC,SET1		;     HeadNumber:= 1; (* <=> OR 4 *)
+	OR	4		;     Sector:= Sector-EOTV;
+	LD	(CURDRIVE),A	;   END;
 	LD	A,C		; 
-	SUB	B		; 
+	SUB	B		;  
 	LD	C,A		; 
 	jr	SET2		; 
 SET1:				; 
 	LD	(CURDRIVE),A	; 
-SET2:				; 
+SET2:				;  CurrentDrive:= HeadNumber*4 + HostDisk;
 	LD	B,0		; 
 	LD	HL,(TRANTAB)	; 
-	ADD	HL,BC		; 
+	ADD	HL,BC		;  ACSEC:= TranslateTable(Sector);
 	LD	A,(HL)		; 
 	LD	(ACSEC),A	; 
-	LD	A,(HSTTRK)	; 
+	LD	A,(HSTTRK)	;  ACTRA:= HostTrack;
 	LD	(ACTRA),A	; 
 	LD	HL,HSTBUF	; 
-	LD	(DSKAD),HL	; 
+	LD	(DSKAD),HL	;  DiskAD:= HostBuffer;
 	LD	A,(HSTDSK)	; 
-	LD	HL,LSTDSK	; 
-	CP	(HL)		; 
-	jr	NZ,SEEKT	; 
+	LD	HL,LSTDSK	;  IF HostDisk=LastDisk AND
+	CP	(HL)		;     HostTrack= LastTrack THEN
+	jr	NZ,SEEKT	;       EXIT;
 	LD	A,(HSTTRK)	; 
 	LD	HL,LSTTRK	; 
 	CP	(HL)		; 
-	jr	NZ,SEEKT	; 
-;
-;
-;HVAD SKER HER??
+	jr	NZ,SEEKT	;  (* Needs to check 16 bits *)
 	LD	A,(HSTTRK+1)	; 
 	INC	HL		; 
 	CP	(HL)		; 
 	RET	Z		; 
 SEEKT:				; 
-	LD	A,(HSTDSK)	; 
+	LD	A,(HSTDSK)	;  LastDisk:= HostDisk;
 	LD	(LSTDSK),A	; 
-	LD	HL,(HSTTRK)	; 
+	LD	HL,(HSTTRK)	;  LastTrack:= HostTrack;
 	LD	(LSTTRK),HL	; 
-	CALL	CLFIT		; 
-	CALL	FDCSEEK		; 
-	CALL	WAITFIT		; 
-	LD	A,(CURDRIVE)	; 
-	AND	3		; 
-	ADD	A,' '		; 
-	CP	B		; 
+	CALL	Clear$FDC$INT	; 
+	CALL	FDCSEEK		;  Make the FDC do the actual seek.
+	CALL	WAIT$FDC$RES	; 
+	LD	A,(CURDRIVE)	;  IF FDC.ST0= SeekEnd+ CurrentDrive THEN
+	AND	3		;    EXIT;
+	ADD	A,20h		; 
+	CP	B		; (* ELSE Recalibrate... *)
 	RET	Z		; 
-RECA:				; 
-	CALL	CLFIT		; 
+RECA:				;   
+	CALL	Clear$FDC$INT	;  Recalibrate and do seek again.
 	CALL	FDCRECALIBRA	; 
-	PUSH	BC		; 
-	CALL	WAITFIT		; 
+	PUSH	BC		;  Return however the ST0 and ST1 values
+	CALL	WAIT$FDC$RES	;  from above.
 	CALL	FDCSEEK		; 
-	CALL	WAITFIT		; 
+	CALL	WAIT$FDC$RES	; 
 	POP	BC		; 
-	RET			; 
+	RET			; END;
 ;
 ;
 ;
-; READ (TRACK, SECTOR) (MAX 10X)
+; READ (TRACK, SECTOR) (MAX 10x)
 SECRD:				; 
-	LD	A,0AH		; 
-	LD	(REPET),A	; 
+	LD	A,0AH		; Counter for retries.  At the fifth retry
+	LD	(REPET),A	; a recalibration will occur.
 RPSC:				; 
-	CALL	STARTMOTOR	; 
-	CALL	CLFIT		; 
+	CALL	STARTMOTOR	; RePeatSectorC??
+	CALL	Clear$FDC$INT	; 
 	LD	HL,(FORM)	; 
 	LD	C,(HL)		; 
 	INC	HL		; 
@@ -444,42 +467,44 @@ RPSC:				;
 	INC	HL		; 
 	CALL	FLDMAW		; 
 	CALL	RDSEC		; 
-	CALL	WAITIT		; 
+	CALL	WAIT$FDC$DONE	; 
 	LD	C,0		; 
-SECCH:				; 
-	LD	HL,FDCRSTAB	; 
-	LD	A,(HL)		; 
+				; Common R/W check code.  C=0 for read, 1 for write
+				; =====================
+SECCH:				; A:= FDC.ST0;
+	LD	HL,FdcST0	; IF Nothing wrong happened with FDC THEN
+	LD	A,(HL)		;   EXIT;
 	AND	0F8H		; 
-	RET	Z		; 
+	RET	Z		; (* Ok -- whats wrong ?? *)
 SCRP:				; 
-	AND	8	;FLOPPY OFFLINE?
+	AND	8		; IF NOT Ready THEN => SCR1;
 	jr	NZ,SCR1		; 
-	LD	A,(REPET)	; 
-	DEC	A		; 
-	LD	(REPET),A	; 
-	jr	Z,SCR1		; 
-	CP	5		; 
-	CALL	Z,RECA		; 
+	LD	A,(REPET)	; (* Well, maybe a bad calibration.  We will
+	DEC	A		;    try to do the read/write again (max 10x). 
+	LD	(REPET),A	;    At the fifth r/w do recalibration. Then a
+	jr	Z,SCR1		;    drive not ready error will be returned.
+	CP	5		;    In that case, the drive is getting sick.
+	CALL	Z,RECA		; *)
 	XOR	A		; 
 	CP	C		; 
 	jr	Z,RPSC		; 
 	jr	RPSW		; 
 SCR1:				; 
-	LD	A,C		; 
+	LD	A,C		; (* Drive not ready !! *)
 	LD	(HSTACT),A	; 
 	LD	A,1		; 
 	LD	(ERFLAG),A	; 
 	RET			; 
 ;
-;
-; WRITE(SECTOR,TRACK)
+; Write Physical Sector.  
+; 
 ;
 SECWR:				; 
 	LD	A,0AH		; 
 	LD	(REPET),A	; 
-RPSW:				; 
+RPSW:				; RePeatSectorWrite:
 	CALL	STARTMOTOR	; 
-	CALL	CLFIT		; 
+	CALL	Clear$FDC$INT	; 
 	LD	HL,(FORM)	; 
 	LD	C,(HL)		; 
 	INC	HL		; 
@@ -487,8 +512,8 @@ RPSW:				;
 	INC	HL		; 
 	CALL	FLDMAR		; 
 	CALL	WRSEC		; 
-	CALL	WAITIT		; 
-	LD	C,1		; 
+	CALL	WAIT$FDC$DONE	; 
+	LD	C,1		; WriteOperation; 
 	jr	SECCH		; 
 RDSEC:				; 
 	LD	A,6		; 
@@ -519,13 +544,13 @@ STOPMOTOR:			; PROCEDURE Stopmotor;
 	IN	A,(14H)		; BEGIN
 	AND	80H		;   IF Minidiskette THEN
 	RET	Z		;     Port[20]:= 0;
-	LD	A,0		; 
+	LDA0			; 
 	OUT	(14H),A		; END;
 	RET			; 
 
 WAITHL:				; PROCEDURE WaitHL(Wait:HL);
 	LD	(WAITCOUNT),HL	; BEGIN
-WAITHL1:			;   Delay(Wait/50);  (* Interruptstyret *)
+WAITHL1:			;   Delay(Wait/50);  (* Interruptdriven *)
 	LD	HL,(WAITCOUNT)	; END;
 	LD	A,L		; 
 	OR	H		; 
@@ -561,7 +586,7 @@ LE686: 				;
 	 jr	Z,LE686		; 
 	 RET			; 
 	else
-	 nop			; Adskiller DISKHOME fra FLOPHOME
+	 nop			; Seperates DISKHOME from FLOPHOME
 	endif
 	
 FLOPHOME:			; PROCEDURE Floppy Home;
@@ -572,115 +597,122 @@ FLOPHOME:			; PROCEDURE Floppy Home;
 	XOR	A		;   LastTrack:= 0;
 	LD	(LSTTRK),A	;  
 	LD	(LSTTRK+1),A	; 
-	CALL	CLFIT		;  Clear Floppy interrupt and
+	CALL	Clear$FDC$INT	;  Clear Floppy interrupt and
 	CALL	FDCRECALIBRA	;  recalibrate drive;
-	CALL	WAITFIT		; 
+	CALL	WAIT$FDC$RES	; 
 	RET			; END;
 
 WAITFDC:			; 
-	IN	A,(FDCdata)	;FLR02... Waits for FDC to be ready to receive
-	AND	0C0H		; a command.
-	CP	80H		; 
+	IN	A,(FDCdata)	;FLR02... 
+	AND	0C0H		; Waits for FDC to be ready to receive a
+	CP	80H		; command.
 	jr	NZ,WAITFDC	; 
 	RET			; 
 ;
 WAITFDCDATA:			; 
-	IN	A,(FDCdata)	;FLR03
-	AND	0C0H		; 
+	IN	A,(FDCdata)	;FLR03.. 
+	AND	0C0H		;  Waits for FDC to have data ready.
 	CP	0C0H		; 
 	jr	NZ,WAITFDCDATA	; 
 	RET			; 
 
 FDCRECALIBRA:			; 
 	CALL	WAITFDC		;FLR04
-	LD	A,FDCrecal	; 
-	OUT	(FDCctrl),A	; 
-	CALL	WAITFDC		; 
-	LD	A,(CURDRIVE)	; 
+	LD	A,FDCrecal	;  Recalibrates drive by stepping it to
+	OUT	(FDCctrl),A	;  track zero.  This is checked by
+	CALL	WAITFDC		;  requiering the FDC to put the
+	LD	A,(CURDRIVE)	;  track zero pin high.
 	AND	3		; 
 	OUT	(FDCctrl),A	; 
 	RET			; 
 ;
-;SENSE DRIVE STATUS - NOT USED
-	CALL	WAITFDC		; 
-	LD	A,FDCsds	; 
-	OUT	(FDCctrl),A	; 
-	CALL	WAITFDC		; 
-	LD	A,(CURDRIVE)	; 
+;SENSE DRIVE STATUS - CURRENTLY UNUSED.  PRESENT, HOWEVER, IN ORIGINAL CODE.
+FDCSENSEDRV:
+	CALL	WAITFDC		; PROCEDURE FDC.SenseDriveStatus;
+	LD	A,FDCsds	; BEGIN
+	OUT	(FDCctrl),A	;   Wait(FDC);
+	CALL	WAITFDC		;   FDC.Ctrl:= SenseDriveStatus(CurrentDrive);
+	LD	A,(CURDRIVE)	;   
 	AND	3		; 
 	OUT	(FDCctrl),A	; 
-	CALL	WAITFDCDATA	; 
+	CALL	WAITFDCDATA	;   WaitForData(FDC);
 	IN	A,(FDCctrl)	; 
-	LD	(FDCRSTAB),A	; 
-	RET			; 
+	LD	(FdcST0),A	;   ST0:= FDC.Ctrl;
+	RET			; END;
 ;
-FDCSENSEINT:			; 
-	CALL	WAITFDC		;FLR06
-	LD	A,FDCsis	; 
-	OUT	(FDCctrl),A	; 
-	CALL	WAITFDCDATA	; 
-	IN	A,(FDCctrl)	; 
-	LD	(FDCRSTAB),A	; 
-	AND	0C0H		; 
-	CP	80H		; 
-	RET	Z		; 
-	CALL	WAITFDCDATA	; 
-	IN	A,(FDCctrl)	; 
-	LD	(CURCYLINDER),A	; 
-	RET			; 
-FDCSEEK:			; 
-	CALL	WAITFDC		; 
-	LD	A,FDCseekcmd	; 
-	OUT	(FDCctrl),A	; 
-	CALL	WAITFDC		; 
-	LD	A,(CURDRIVE)	; 
+FDCSENSEINT:			;FLR06/
+	CALL	WAITFDC		;
+	LD	A,FDCsis	; PROCEDURE FDC.SenseInterruptStatus; 
+	OUT	(FDCctrl),A	; BEGIN
+	CALL	WAITFDCDATA	;   Wait(FDC);
+	IN	A,(FDCctrl)	;   FDC.Ctrl:= SenseInterruptStatus;
+	LD	(FdcST0),A	;   WaitForData(FDC);
+	AND	0C0H		;   ST0:= FDC.Ctrl;
+	CP	80H		;   IF NOT IllegalCommand THEN (* ST0.76<> 10b *)
+	RET	Z		;   BEGIN 
+	CALL	WAITFDCDATA	;     WaitForData(FDC);
+	IN	A,(FDCctrl)	;     ST1:= FDC.Ctrl;
+	LD	(FdcST1),A	;   END
+	RET			; END;
+
+FDCSEEK:			; PROCEDURE FDC.Seek;
+	CALL	WAITFDC		; BEGIN
+	LD	A,FDCseekcmd	;   
+	OUT	(FDCctrl),A	;   FDC.Ctrl:= Seek(CurDrive AND 3,
+	CALL	WAITFDC		;                   ActualTrack);
+	LD	A,(CURDRIVE)	;   
 	AND	3		; 
-	OUT	(FDCctrl),A	; 
+	OUT	(FDCctrl),A	;   (* with waits between each byte *)
 	CALL	WAITFDC		; 
 	LD	A,(ACTRA)	; 
 	OUT	(FDCctrl),A	; 
-	RET			; 
+	RET			; END;
 				;
-GETFDCSTATUS:			; 
-	LD	HL,FDCRSTAB	; 
+GETFDCSTATUS:			; PROCEDURE FDC.GetStatus; (* Gets upto 7 result bytes*)
+	LD	HL,FdcST0	; 
 	LD	D,7		; 
-GETNEXTFDCST:			; 
-	CALL	WAITFDCDATA	; 
-	IN	A,(FDCctrl)	; 
-	LD	(HL),A		; 
-	INC	HL		; 
+GETNEXTFDCST:			; BEGIN
+	CALL	WAITFDCDATA	;   FOR d:= 7 DOWNTO 0 DO
+	IN	A,(FDCctrl)	;   BEGIN
+	LD	(HL),A		;     WaitForData(FDC);
+	INC	HL		;     Fdc.ST(.7-d.):= FDC.Ctrl;    
 	LD	A,4		; 
-FDCFINISH:			; 
+GetST$Loop:			;     Delay(xx ms);
 	DEC	A		; 
-	jr	NZ,FDCFINISH	; 
-	IN	A,(FDCdata)		; 
-	AND	10H		; 
-	RET	Z		; 
+	jr	NZ, GetST$Loop	;     IF AllRead THEN
+	IN	A,(FDCdata)	;       EXIT;
+	AND	10H		;   END;
+	RET	Z		; END;
 	DEC	D		; 
 	jr	NZ,GETNEXTFDCST	; 
 	RET			; 
-CLFIT:				; 
-	DI			; 
-	XOR	A		; 
-	LD	(FDCRESOK),A	; 
-	EI			; 
-	RET			; 
+Clear$FDC$INT:			; PROCEDURE ClearFloppyInterrupt;
+	DI			; BEGIN
+	XOR	A		;   DisableInterupts;
+	LD	(FDCRESOK),A	;   FDC.ResultOK:= FALSE;
+	EI			;   EnableInterrupts;
+	RET			; END;
 ;
+; Wait for Floppy controller to send the interrupt that signals that 
+; it has finished doing the assigned task.
+; WAIT$FDC$RES returns the FDC status in BC, and clears the floppy interrupt.
 ;
-;WAIT FLOPPY INTERRUPT??
-WAITFIT:			; 
-	CALL	WAITIT		; 
-	LD	A,(FDCRSTAB)	; 
-	LD	B,A		; 
-	LD	A,(CURCYLINDER)	; 
-	LD	C,A		; 
-	CALL	CLFIT		; 
-	RET			; 
-WAITIT:				; 
+
+WAIT$FDC$RES:			; PROCEDURE Wait.FDC.Result in BC; (* Prev WAITFIT *)
+	CALL	WAIT$FDC$DONE	; 
+	LD	A,(FdcST0)	; BEGIN
+	LD	B,A		;   WaitFDCDone;
+	LD	A,(FdcST1)	;   B:= ST0;
+	LD	C,A		;   C:= ST1;
+	CALL	Clear$FDC$INT	;   ClearFloppyInterrupt;
+	RET			; END;
+
+WAIT$FDC$DONE:			; --- befone WAITIT
 	LD	A,(FDCRESOK)	; 
 	OR	A		; 
-	jr	Z,WAITIT	; 
+	jr	Z,WAIT$FDC$DONE	; 
 	RET			; 
+
 FLDMAR:				; 
 	LD	A,00000101b	; Set channel 1 mask bit
 	DI			; 
@@ -689,7 +721,7 @@ FLDMAR:				;
 				; No autoinitialize, Increment address
 ;
 ;
-;FLDMASET.  STARTER DMA CONTROLLER.  DOC 1-39
+;FLDMASET.  Sets up DMA CONTROLLER.  DOC 1-39
 FLDMASET:			; 
 	OUT	(dmamode),A	; 
 	OUT	(dmaclrff),A	; 
@@ -712,51 +744,58 @@ FLDMAW:				;
 	LD	A,01000101b	; Single mode, Address increment, No autoinit,
 				; Write transfer, Channel 1
 	jr	FLDMASET	; 
-;
-;
-;
-; DOC ITT PAGE 1-42
-FLCONTSET:			; 
-	PUSH	AF		; 
-	DI			; 
-	CALL	WAITFDC		; 
+	page
+
+; **** FLCONTSET ****
+; routine to set floppy controller
+; when called ACTRA= Cylinder number
+;             ACSEC= Sector number
+;             A=     Command value (for controller)
+;             HL=    ^Diskinfo??
+
+FLCONTSET:			; PROCEDURE FloppyControllerSet;
+	PUSH	AF		; BEGIN
+	DI			;   DisableInterrupts;
+	CALL	WAITFDC		;   Wait(FDC);
 	POP	AF		; 
-	LD	B,(HL)		; 
+	LD	B,(HL)		;   b:= Density (mf/mfm)
 	INC	HL		; 
-	ADD	A,B		; 
-	OUT	(FDCctrl),A	; 
-	CALL	WAITFDC		; 
+	ADD	A,B		;   FDC.Ctrl:= (* each seperated with Wait(FDC) *)
+	OUT	(FDCctrl),A	;        
+	CALL	WAITFDC		;        (A + mf/mfm);
 	LD	A,(CURDRIVE)	; 
+	OUT	(FDCctrl),A	;      & CurrentDrive (inclusive headno)
+	CALL	WAITFDC		;   
+	LD	A,(ACTRA)	;      & Cylinder number  
 	OUT	(FDCctrl),A	; 
 	CALL	WAITFDC		; 
-	LD	A,(ACTRA)	; 
-	OUT	(FDCctrl),A	; 
-	CALL	WAITFDC		; 
-	LD	A,(CURDRIVE)	; 
+	LD	A,(CURDRIVE)	;      
 	RRA			; 
 	RRA			; 
 	AND	3		; 
-	OUT	(FDCctrl),A	; 
+	OUT	(FDCctrl),A	;      & Headaddress   (* Curdrive.3 *)
 	CALL	WAITFDC		; 
-	LD	A,(ACSEC)	; 
+	LD	A,(ACSEC)	;     
+	OUT	(FDCctrl),A	;      & Sector number
+	CALL	WAITFDC		; 
+	LD	A,(HL)		; 
+	INC	HL		;      & Bytes/Sector (= 128*(1+N))
 	OUT	(FDCctrl),A	; 
 	CALL	WAITFDC		; 
 	LD	A,(HL)		; 
 	INC	HL		; 
-	OUT	(FDCctrl),A	; 
+	OUT	(FDCctrl),A	;      & Last sector number
 	CALL	WAITFDC		; 
 	LD	A,(HL)		; 
-	INC	HL		; 
-	OUT	(FDCctrl),A	; 
-	CALL	WAITFDC		; 
-	LD	A,(HL)		; 
-	OUT	(FDCctrl),A	; 
+	OUT	(FDCctrl),A	;      & Gaplength
 	CALL	WAITFDC		; 
 	LD	A,(DTLV)	; 
-	OUT	(FDCctrl),A	; 
-	EI			; 
-	RET			;
+	OUT	(FDCctrl),A	;      & Datalength (FF if byt/sec <>0)
+	EI			;  EnableInterrupts; 
+	RET			;END;
+	page
 ;-------------------------------- 
+
 INTFDC:				; PROCEDURE FloppyInterrupt; 
 	LD	(SAVESP),SP	; INTERRUPT;
 	LD	SP,INTSTACK	; 
@@ -770,10 +809,10 @@ INTFDC:				; PROCEDURE FloppyInterrupt;
 INTFDC2:			;   (* Wait a little for FDC to be ready *)
 	DEC	A		;  
 	jr	NZ,INTFDC2	; 
-	IN	A,(FDCdata)	; IF NOT(???) THEN
-	AND	10H		;   
-	jr	NZ,FDCGETRES	; 
-	CALL	FDCSENSEINT	; 
+	IN	A,(FDCdata)	;   IF ResultPhase THEN
+	AND	10H		;     ReadResults
+	jr	NZ,FDCGETRES	;   ELSE
+	CALL	FDCSENSEINT	;     SenseInterruptstatus;
 	jr	DONEINTFDC	; 
 FDCGETRES:			; 
 	CALL	GETFDCSTATUS	; 
@@ -784,12 +823,12 @@ DONEINTFDC:			;
 	POP	AF		; 
 	LD	SP,(SAVESP)	; 
 	EI			; 
-	RETI			; 
+	RETI			; END;
 
 	
-	if	UseHD
+	if	UseHD		; These routines are NOT documented at all
 ;-----------------------------------------------------------------
-WRTFLOPPY:			; 
+WRT$HD:				; 
 	 CALL	LE83B		; 
 	 CALL	NC,LE880	; 
 	 CALL	LE901		; 
@@ -1036,37 +1075,55 @@ LE9B2:				;
 	LD	SP,(SAVESP)	; 
 	EI			; 
 	RETI			; 
-	endif	; Af harddisk rutiner  --- Starter med label WRTFLOPPY
+	endif	; 	Of harddisk routines   -- Starts with label WRT$HD
+
+
+	page
+; Tables for routines.
 ;
+; ** SKEW tables for CP/M
 ;
 TRAN0:				; IBM SS/SD skew
 ;	skew	26, 6, 1	;
-	DB	01H,07H,0DH,13H,19H,05H,0BH	;
-	DB	11H,17H,03H,09H,0FH,15H,02H
-	DB	08H,0EH,14H,1AH,06H,0CH,12H
-	DB	18H,04H,0AH,10H,16H
+	DB	01H,07H,0DH,13H	;
+	DB	19H,05H,0BH,11H	;
+	DB	17H,03H,09H,0FH	;
+	DB	15H,02H,08H,0EH	;
+	DB	14H,1AH,06H,0CH	;
+	DB	12H,18H,04H,0AH	;
+	DB	10H,16H		;
+
 TRAN8:				; DS/SD skew (track 0, head 1)
-;	skew	15, 4, 1	;
-	DB	01H,05H,09H,0DH,02H,06H,0AH
-	DB	0EH,03H,07H,0BH,0FH,04H,08H
-	DB	0CH		; 
-TRAN16:				; 		; 5" skew
-;	skew	9, 2, 1		;
-	DB	01H,03H,05H,07H,09H,02H,04H
-	DB	06H,08H		; 
-TRAN24:				;
-;	skew	26, 1, 1	;
+				; (skew	15, 4, 1)
+	DB	01H,05H,09H,0DH	;
+	DB	02H,06H,0AH,0EH	;
+	DB	03H,07H,0BH,0FH	;
+	DB	04H,08H,0CH	; 
+
+TRAN16:				; 5" skew
+				; (skew	9, 2, 1	)
+	DB	01H,03H,05H,07H	;
+	DB	09H,02H,04H,06H	;
+	DB	08H		; 
+
+TRAN24:				; Track 0, side 0
+				; (skew	26, 1, 1)
  
-	DB	01H,02H,03H,04H,05H,06H,07H
-	DB	08H,09H,0AH,0BH,0CH,0DH,0EH
-	DB	0FH,10H,11H,12H,13H,14H,15H
-	DB	16H,17H,18H,19H,1AH
+	DB	01H,02H,03H,04H	;
+	DB	05H,06H,07H,08H	;
+	DB	09H,0AH,0BH,0CH	;
+	DB	0DH,0EH,0FH,10H	;
+	DB	11H,12H,13H,14H	;
+	DB	15H,16H,17H,18H	;
+	DB	19H,1AH		;
 
 ;
-;DPB!! (SPT.W, BSH.B,BLM.B,EXM.B,DSM.W,AL.W,CKS.W,OFF.W,PSH.B,PHM.B)
+; *** DPB!! (SPT.W, BSH.B,BLM.B,EXM.B,DSM.W,AL.W,CKS.W,OFF.W,PSH.B,PHM.B)
+;
+; These have not yet been nicified.
 ;
 DPBLK0:				; IBM 8" SS/SD 
-;	dpb	128, 26, 77, 1024, 64, 2
+;				  (dpb	128, 26, 77, 1024, 64, 2)
 
 	DB	1AH,00H,03H,07H,00H,0F2H,00H
 	DB	3FH,00H,0C0H,00H,10H,00H,02H
@@ -1074,7 +1131,7 @@ DPBLK0:				; IBM 8" SS/SD
 
 ;
 DPBLK8:				; 
-;	dpb	128, 120, 62, 2048, 128, 2 ; Denne virker ikke!!
+;				  (dpb	128, 120, 62, 2048, 128, 2) (Doesn't work)
 
 	DB	78H,00H,04H,0FH,00H
 	dw	disk8size
@@ -1083,46 +1140,46 @@ DPBLK8:				;
 
 ;
 DPBXX1:				; 
-;	dpb	128, 26, 75, 1024, 64, 0
-;
+;				  (dpb	128, 26, 75, 1024, 64, 0)
 	DB	1AH,00H,03H,07H,00H,0F2H,00H
 	DB	3FH,00H,0C0H,00H,10H,00H,00H
 	DB	00H		; 
 
 ;
 DPBLK24:			; Track 0 side 1.  Total format 944 kb
-;	***dpb	128, 104, 73, 2048, 128, 0
+;				  (dpb	128, 104, 73, 2048, 128, 0)
 
 	DB	68H,00H,04H,0FH,00H,0D7H,01H
 	DB	7FH,00H,0C0H,00H,20H,00H,00H
-	DB	00H		; 
+	DB	00H		
 ;
 ;
-DPBXX3:				; 
-;	***dpb	128, 384, 21, 2048, 128, 3, 0	; 900 kb C:
+DPBXX3:				; 	; 900 kb C:
+;				( dpb	128, 384, 21, 2048, 128, 3, 0)
 
 	DB	80H,01H,04H,0FH,00H
 	dw	disk8size
 	DB	7FH,00H,0C0H,00H,00H,00H,03H
 	DB	00H		; 
 
-LEA54:				; 
-;	** dpb	128, 384, 9, 2048, 128, 3, 0	; 270 kb C:
+LEA54:				; 	; 270 kb C:
+;				 (dpb	128, 384, 9, 2048, 128, 3, 0)
 	DB	80H,01H,04H,0FH,01H,86H,00H
 	DB	7FH,00H,0C0H,00H,00H,00H,03H
 	DB	00H		; 
 LEA63:				; 
-;	dpb	128, 384, 68, 4096, 512, 27, 0	; 20 Mb harddisk
-	DB	80H,01H,05H,1FH,01H,0EBH,01H
+;				( dpb	128, 384, 68, 4096, 512, 27, 0)
+						; 20 Mb harddisk
+	DB	80H,01H,05H,1FH,01H,0EBH,01H 	; in various partitions.
 	DB	0FFH,01H,0F0H,00H,00H,00H,1BH
 	DB	00H		; 
 LEA72:				; 
-;	*** dpb	128, 384, 68, 8192, 512, 27, 0	;
+;				 (dpb	128, 384, 68, 8192, 512, 27, 0)
 	DB	80H,01H,06H,3FH,03H,0EBH,01H
 	DB	0FFH,01H,0C0H,00H,00H,00H,1BH
 	DB	00H		; 
 LEA81:				; 
-;	*** dpb	128, 384, 68, 8192, 512, 27, 0	;
+;				 (dpb	128, 384, 68, 8192, 512, 27, 0)
 
 	DB	80H,01H,07H,7FH,07H,0EEH,01H
 	DB	0FFH,01H,80H,00H,00H,00H,1BH
@@ -1136,7 +1193,7 @@ LEA98:				;
 	DB	00H,00H,00H,00H,00H,00H,00H
 	DB	00H		; 
 ;
-; DPH's
+; This aint no DPH's
 ;
 FSPAR0:				; 
 	DW	DPBLK0		; 
@@ -1196,43 +1253,110 @@ FSPAR64:			;
 ;
 ;
 ;SEE ITT3290 CP/M BIOS PAGE 1-9
-FDCPARMS:			; 
-	DB	1AH		; 
-FDF1:				; 
-	DB	7FH,00H,00H,00H,1AH,07H,4DH
-	DB	1EH		; 
+FDCPARMS:			; **** 8" SS
+	DB	26		; Sectors on track
+FDF1:	dw	127		; DMA count (bytes-1)
+	db	0		; FM=0,  MFM=64
+	db	0		; Sector size= 128*(N+1), where N is DB'ed here.
+	db	26		; Last sector on track
+	db	7		; Gap length
+	db	77		; Number of tracks.
+				; DB	7FH,00H,00H,00H,1AH,07H,4DH
+
+				; **** 8" DD
+	DB	30		; 
 FDF2:				; 
-	DB	0FFH,01H,40H,02H,0FH,1BH,4DH
+	dw	511		; 
+	db	64		;
+	db	2		;
+	db	15		;
+	db	27		;
+	db	77		;
+
+				;	DB	0FFH,01H,40H,02H,0FH,1BH,4DH
+
+				; **** 5 1/4" DD ?? (different from ITT 3290)
 	DB	1AH		; 
 FDF3:				; 
-	DB	7FH,00H,00H,00H,1AH,07H,4DH
-	DB	34H		; 
+	dw	127		;
+	db	0		;
+	db	0		;
+	db	26		;
+	db	7		;
+	db	77		;
+				;DB	7FH,00H,00H,00H,1AH,07H,4DH
+
+	DB	52		; Special Track 0 page 1 format
 FDF4:				; 
-	DB	0FFH,00H,40H,01H,1AH,0EH,4DH
+	dw	255		;
+	db	64		;
+	db	1		;
+	db	26		;
+	db	14		;
+	db	77		;
+				;DB	0FFH,00H,40H,01H,1AH,0EH,4DH
+
 	DB	10H		; 
 FDF5:				; 
-	DB	0FFH,01H,18H,00H,00H,20H,00H
+	dw	511		;
+	db	24		;
+	db	0		;
+	db	0		;
+	db	32		;
+	db	0		;
+
+				;DB	0FFH,01H,18H,00H,00H,20H,00H
+
 	DB	10H		; 
 FDF7:				; 
-	DB	0FFH,01H,18H,00H,00H,20H,00H
+	dw	511		;
+	db	24		;
+	db	0		;
+	db	0		;
+	db	32		;
+	db	0		;
+				;DB	0FFH,01H,18H,00H,00H,20H,00H
+
 	DB	10H		; 
 FDF8:				; 
-	DB	0FFH,01H,29H,00H,00H,20H,00H
+	dw	511		;
+	db	41		;
+	db	0		;
+	db	0		;
+	db	32		;
+	db	0		;
+				;DB	0FFH,01H,29H,00H,00H,20H,00H
+
 	DB	10H		; 
-FDF9:				; 
-	DB	0FFH,01H,53H,00H,00H,20H,00H
+FDF9:				;
+	dw	511		;
+	db	83		;
+	db	0		;
+	db	0		;
+	db	32		;
+	db	0		;DB	0FFH,01H,53H,00H,00H,20H,00H
+
 	DB	10H
-FDF10:	DB	0FFH,01H,0A6H,00H,00H,20H
-	DB	00H		; 
+FDF10:	
+	dw	511		;
+	db	166		;
+	db	0		;
+	db	0		;
+	db	32		;
+	db	0		; DB	0FFH,01H,0A6H,00H,00H,20H, 00h
+
+; **** 
+; **** DPH table of all drives.  
+; **** 
 DPHBASE:				; 
-	DW	0, 0, 0, 0, DIRBUF, DPBLK8, CSV0, ALV0	; 
-	DW	0, 0, 0, 0, DIRBUF, DPBLK8, CSV1, ALV1	; 
-	 DW	0, 0, 0, 0, DIRBUF
+	DW	0, 0, 0, 0, DIRBUF, DPBLK8, CSV0, ALV0	; Skew table is set
+	DW	0, 0, 0, 0, DIRBUF, DPBLK8, CSV1, ALV1	; during operation
+	DW	0, 0, 0, 0, DIRBUF
 C$DPB:			; 
-	 DW	LEA54		; (* 8" eller 5" *)
+	 DW	LEA54		; (* 8" or 5" *)
 
 	IFE	UseHD
-	 dw	0, alv0		; (* overlap drev a: *)
+	 dw	0, alv0		; (* overlap drive a: *)
 	else
 	 DW	0, LF1CF	; 
 ;
@@ -1242,4 +1366,30 @@ C$DPB:			;
 	 DW	0, 0, 0, 0, DIRBUF, LEA72, 0, LF294	; 
 	 DW	0, 0, 0, 0, DIRBUF, LEA63, 0, LF2D3	; 
 	endif
-
+
+
+;*******************************
+; Statusline function for the DISKIO module
+; Called by U$STATL from the STATl module
+;
+dio$st::
+	ld	a, (sekdsk)
+	call	c$bcd
+	ld	(dio$d), hl
+	ld	a, (track)
+	call	c$bcd
+	ld	(dio$t), hl
+	ld	a, (sector)
+	call	c$bcd
+	ld	(dio$s), hl
+
+	ld	hl, dio$sln
+	ret
+
+dio$sln:
+	db	80h, 'D:'
+dio$d:	db	'xx T:'
+dio$t:	db	'xx S:'
+dio$s:	db	'xx '
+dio$op:	db	'x',0
+

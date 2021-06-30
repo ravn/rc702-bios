@@ -1,28 +1,29 @@
 	subttl	File: CDATA.MAC
 ;
-; Datadefinitioner til Cbios.  Flyttet tilbage i kildeteksten for
-; at garantere at de ligger s} taet op af koden som muligt. 910302
+; Datadefinitions for CBIOS-Rc700.  These are present straight after
+; the code module.   910302
 ;
-; Nuv{rende placering er lige bag interrupt koden
+; ISO-8859-1 code page added 930725
 ;
 ; ;.phase	0ee80h+1a4h	;
 ;
 BUFFERSTART::	DB	0		; 
 HSTBUF::	DS	512		; 512 bytes deblock buffer
 DIRBUF::	DS	128		; 
-ALV0::		DS	0047H		; 1136 kb a 2 kb/block med 8 bit/byte
+ALV0::		DS	0047H		; 1136 kb a 2 kb/block with 8 bit/byte
 CSV0::		DS	0020H		; 128 directory entries   
 ALV1::		DS	0047H		; 1136 ... 
 CSV1::		DS	0020H		; 128 ...
 
 		if	UseHD
-					; DREV A: OG B: er pr 910327
-LF1CF::		DS	0047H		; MODIFICERET TIL AT INDEHOLDE 72 SPOR
-LF216::		DS	003FH		; = 1,08 Mb istedet for 0.9 Mb
+					; Please note that the A and B drives
+LF1CF::		DS	0047H		; has been expanded to use the whole
+LF216::		DS	003FH		; disk, 910327
 LF255::		DS	003FH		; 
 LF294::		DS	003FH		; 
 LF2D3::		DS	003FH		; 
 		endif
+					; Sector deblocking variables.
 SEKDSK::	DB	0		; 
 TRACK::		DW	0		; 
 SECTOR::	DW	0		; 
@@ -34,8 +35,6 @@ LSTTRK::	DW	0		;
 SEKHST::	DW	0		; 
 HSTACT::	DB	0		; 
 HSTWRT::	DB	0		; 
-;;
-; DEBLOCKING INFORMATION??
 UNACNT::	DB	0		; 
 UNADSK::	DB	0		; 
 UNATRK::	DW	0		; 
@@ -46,12 +45,9 @@ RSFLAG::	DB	0		;
 READOP::	DB	0		; 
 WRTYPE::	DB	0		; 
 DMAAREA::	DW	0		; 
-FORM::		DW	0		; 
-;
-;
-;CURRENT FORMAT
-CFORM::		DB	0H		; 
-EOTV::		DB	0		;SECTORS PR TRACK
+FORM::		DW	0		;  Current diskette format.
+CFORM::		DB	0H		;  -//-
+EOTV::		DB	0		;  SECTORS PR TRACK
 DRNO::		DB	0		; 
 MAXFLOPPY::	DB	0		; 
 LF336::		DB	0		; 
@@ -63,13 +59,12 @@ DSKAD1::	DB	0		;
 ACTRA::		DB	0		; 
 ACSEC::		DB	0		; 
 REPET::		DB	0		; 
+
 ;
+; Result registers from FDC.  See INIT.MAC for documentation on FDC.
 ;
-;
-;7:FDC READY,6:DIRECTION,5:NON-DMA,4:DOING COMMAND,3..0:DRIVE SEEK
-;
-FDCRsTab::	DB	0		; 
-CURCYLINDER::	DB	0,0,0,0,0,0,0	;
+FdcST0::	DB	0		; 
+FdcST1::	DB	0,0,0,0,0,0,0	;
 					;26H,41H,74H,79H,70H,65H,0DH
 HDSTATUS::	DB	0		; 
 LF348::		DB	0		; 
@@ -80,44 +75,46 @@ FLOPPYBOOT::	DB	0		;
 FDCRESOK::	DB	0		; 
 FIRSTLOAD::	DB	0		; 
 					;
-DPBLK::		DB	0		; 00 Disk blok som bliver sat af seldisk. 
-DPBLK1::	DB	0		; 01 Detaljerne er ikke udarbejdet endnu.
-CPMRBP::	DB	0		; 02
-LF354::		DW	0		; 04 SecMsk:= HostSize/128
-SECMSK::	DB	0		; 05
-SECSHF::	DB	0		; 06 Den har st|rrelsen 10h bytes
-TRANTAB::	DW	0		; 08 s} fejlen blev rettet ved at allokere
-DTLV::		DB	0		; 09 LIDT mere plads.
+DPBLK::		DB	0		; 00 This diskblock is set by seldisk
+DPBLK1::	DB	0		; 01 The details have not yet been 
+CPMRBP::	DB	0		; 02 covered.
+CPMSPT::		DW	0	; 04 
+SECMSK::	DB	0		; 05 SecMsk:= HostSize/128
+SECSHF::	DB	0		; 06 
+TRANTAB::	DW	0		; 08 
+DTLV::		DB	0		; 09 
 HDSELECTED::	DB	0		; 10
-		dw	0,0,0		; 16
+		dw	0,0,0		; 16 -- Used to fill up to correct size
 	
-	db	0		; -- bare for at v{re HELT sikker.
+	db	0		; one more, just to be sure
 
-XCOOR::		DB	0	; Nuv{rende xkoordinat
-ScrLineBase::	DW	0	; Antal tegn nuv.linie starter p} (ikke ^Screen)
-YCOOR::		DB	0	; Nuv{rende Ykoordinat
-CURLINESTART::	DW	0	; Word der peger p} starten af nuv. linie
-CHARSYET::	DB	0	; Antal tegn manglende i Gotoxy sekvens
-XCOORW::	DW	0	; Word der peger p} nuv{rende cursorposition
-COUTCHAR::	DB	0	; Tegnet der |nskes udskrevet
-FB$ACTI::	DB	0	; 0= Ikke aktiv, 1= Forgrund, 2=Baggrund
+; These used to be at $FFD1, but was moved to allow the statusline. 
+;
+XCOOR::		DB	0	; Current X-coordinate
+ScrLineBase::	DW	0	; Charoffset for currentline.
+YCOOR::		DB	0	; Current Y-coordinate
+CURLINESTART::	DW	0	; Word pointing to start of current line
+CHARSYET::	DB	0	; Characters not yet rec. in GotoXY sequence.
+XCOORW::	DW	0	; Word pointing to current cursorposition
+COUTCHAR::	DB	0	; Char wished to be printed.
+FB$ACTI::	DB	0	; Fore/Background (0=Inactive, 1=Fore, 2=Back)
 CB$POS::	DW	0	; 
-SAVEXYPOS::	DB	0	; Til at gemme f|rste koordinat i Gotoxy med
-EXITCOUNT::	DW	0	; Antal ticks f|r EXJP kaldes.
-MOTORCOUNT::	DW	0	; Ticks f|r mini motoren slukkes. 
-WAITCOUNT::	DW	0	; Antal tick bios |nsker at vente endnu
+SAVEXYPOS::	DB	0	; Save first coordinate in GotoXY with
+EXITCOUNT::	DW	0	; Ticks before EXJP is called
+MOTORCOUNT::	DW	0	; Ticks before minidisk motor is turned off.
+WAITCOUNT::	DW	0	; Ticks bios wants to wait yet.
 ;
-EXJP::		DB	0	; Jump instruktionen til EXJPaddr
+EXJP::		DB	0	; Jump instruction for EXjpaddr.
+EXJPADDR::	Dw	0	; Jump address for same.
 ;
-;
-; EXJPADDR SHOULD BE A WORD INSTEAD OF A BYTE??? Overlapper MOTOROFFTIME.
-; rettet 910302
-EXJPADDR::	Dw	0	; 
-MOTOROFFTIME::	DW	0	; Initv{rdien for ticks f|r motoren slukker
+; Bug in original bios.  Jumpvector was byte instead of word.
+; Corrected 910302
 
+MOTOROFFTIME::	DW	0	; Initvalue for ticks before turning off motor
 
-FB$BASE::	 			; Skal vaere defineret til INIT
-		if	fb$ena
+FB$BASE::	 			; Must be known to INIT routine.
+
+		if	fb$ena		; (Dummy contents)
 		 DB	'e'		; 
 FB$POS1::	 DB	0DH,'08&E&A',0DH,'0'
 FB$LINE::	 DB	'9END&F',0DH,'10M{ngdes grund&A '
@@ -135,31 +132,57 @@ FB$SECO::	 DB	'&'		;
 FB$LAST::	 DB	'D'
 		endif
 
-		db	'## end of bios ##'
-		.dephase
+biosdataend::
+
 ;--------------------------
+; Interrupt stack:
 		
-		.phase	0f620h
-INTSTACK::				; 0f620h
+		DS	60h		; Should be enough
+
+INTSTACK::				
 ;--------------------------
+; Biosstack is hopefully deep enough
+
+
 		DS	060h
 BIOSSTACK::	
 
-KEYOUTTABLE::	DS	080H		; (Kun 7-bit ascii i uddata )
 
-KEYINTABLE::	DS	0100H		; 
-		.dephase
+; CONOUT and KEYIN maps.  Setup by init routine.
+
+ISOOUTTABLE::				; Char 160-255 for output $F620
+
+        db	7fh, 7fh, 7fh, 7fh, 7fh, 7fh, 7fh, 7fh
+        db	7fh, 7fh, 7fh, 7fh, 7fh, 7fh, 7fh, 7fh
+        db	7fh, 7fh, 7fh, 7fh, 7fh, 7fh, 7fh, 7fh
+        db	7fh, 7fh, 7fh, 7fh, 7fh, 7fh, 7fh, 7fh
+        
+	db	7fh, 21h, 63h, 03h, 04h, 59h, 1ch, 13h	; A0
+	db	10h, 43h, 61h, 3ch, 7fh, 7fh, 52h, 5fh	; 
+	db	27h, 2bh, 32h, 33h, 27h, 7fh, 70h, 2eh	; B0
+	db	2ch, 31h, 6fh, 3eh, 7fh, 7fh, 7fh, 3fh	; 
+	db	41h, 41h, 41h, 41h, 06h, 5dh, 5bh, 08h	; C0
+	db	45h, 0ah, 45h, 07h, 49h, 49h, 49h, 49h	;
+	db	44h, 02h, 4fh, 4fh, 4fh, 09h, 0eh, 78h	; D0
+	db	5ch, 55h, 55h, 55h, 00h, 59h, 7fh, 11h	;
+	db	01h, 61h, 61h, 61h, 60h, 7dh, 7bh, 18h	; E0
+	db	15h, 1ah, 65h, 17h, 19h, 69h, 69h, 69h	;
+	db	64h, 12h, 6fh, 1fh, 6fh, 09h, 7eh, 2dh	; F0
+	db	7ch, 14h, 75h, 75h, 40h, 79h, 7fh, 79h	;
+	
+KEYOUTTABLE	equ	0f680h		; (7bit only)   $F680
+KEYINTABLE	equ	0f700H		; (8bit here!)	$F700
+
 	page			;
 ;
-;
-;ORG $FFD0 - HER laa DIVERSE SYSTEMVARIABLE -- efter fysisk sk{rmhukommelse
-;Et tick varer 20 ms, dvs 50 interrupts pr sekund.  Flyttet 910302
+; In high memory we only keep the CLock counter.  If this is needed for
+; an application it better be at a fixed address.  All the rest was
+; moved 910302
 ;
 		;;.phase	0FFD0h
-;STOPDMAFF::	DB	0FFh	; En FF til at stoppe DMA overf|rsel med
+;STOPDMAFF::	DB	0FFh	; An FF to stop the DMA for the CRT
 
-CLOCKLOW	EQU	0FFFCh	; 32 bits t{ller for CLOCK
+CLOCKADDR	EQU	0FFFAh  ; Pointer to Clock block Structure
+CLOCKLOW	EQU	0FFFCh	; 32 bits counter for CLOCK
 CLOCKHIGH	EQU	0FFFEh	; 
-
-		END	
-
+

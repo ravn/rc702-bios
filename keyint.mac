@@ -1,17 +1,19 @@
 ;-----------------------------------------------------------
 ;
-; Keyboard interrupt server modul.  MEGET udvidet siden den 
-; oprindelige RcBIOS
+; Keyboard interrupt server module.  This is *very* expanded
+; since the original RcBIOS.
 ;
+; This module implements the Menu activated by (currently) the
+; CLEAR key.
 ;-----------------------------------------------------------
 	subttl	File: KEYINT.MAC
 keyserver::	
-	dw	ks$1		; Indeholder *addressen* p} rutinen der skal
-				; behandle tastetrykket.
+	dw	ks$1		; Contains the *address* of the routine
+				; which is to process the keypress.
 
 KEYINTERRUPT:			; PROCEDURE KeyInterrupt;
 	LD	(SAVESP),SP	; BEGIN
-	LD	SP,INTSTACK	;   (* Enter interupt *)
+	LD	SP,INTSTACK	;   (* Enter interrupt *)
 	PUSH	AF		;   
 	push	bc		;
 	push	de		;
@@ -23,10 +25,20 @@ KEYINTERRUPT:			; PROCEDURE KeyInterrupt;
 	ld	hl,(keyserver)	; (* Jump to current keyboard interrupt
 	jp	(hl)		;    server. Scan code in A & C *)
 
+;********************** To end the keyinterrupt these routines are available
+;
+;  ks$normal -- Show clock, and set keyboard input to user program.
+;  ks$none   -- Do not change statusline, but set keyboard input to userprogarm.
+;  x$kbdint  -- Set keyboard server to HL.
 
+ks$normal::
+	call	N$statl		; Reset statline
+ks$none::			;
+	ld	hl, ks$1	; Set normal keyboard server.
+				;
 xsk$kbdint::			; Exit point to use when transferring
 				; keyserver rights to other routine.
-	ld	(keyserver), hl
+	ld	(keyserver), hl	;
 x$kbdint::			; Exit routine for keyboard interrupt.
 				;
 	pop	ix		;
@@ -34,15 +46,28 @@ x$kbdint::			; Exit routine for keyboard interrupt.
 	pop	de		;
 	pop	bc		;
 	pop	af		;
-	ld	sp,(savesp)	;  (* M}ske en god ide :( *)
+	ld	sp,(savesp)	;  
 	ei			;  (* exit interrupt *)
 	RETI			; END;
 
-ks$1::				; Keyboard server #1!
+;-------------------------------;
+ks$key::			; Map key to menu key (that is keyin mapped
+				; and in uppercase)
+	ld	hl, keyintable	;
+	call	translate	;
+	cp	'a'-1		; IF key in ['a'..'}'] THEN
+	ret	c		;   key:= key -32
+	cp	'}'+1		;
+	ret	nc		;
+	add	a, 'A'-'a'	;
+	ret			;
+
+
+ks$1::				; Keyboard server #1!  (Normal one)
 				; -------------------
 
 	cp	SysReqkey	;    Is it the System Request key?
-	jr	z, setks$2
+	jr	z, sks$main	;
 
 
 	ld	ix, kbdbuf	;  IF NOT q$full(kbdbuf) THEN
@@ -57,12 +82,58 @@ ks$1::				; Keyboard server #1!
 	call	q$put		;
 	jr	x$kbdint	; bye bye.
 
-setks$2::
-	ld	hl, ks$2	; Set keyboard server to #2
+sks$main::
+	ld	hl, main$stat	;
+	call	s$statl		;
+	ld	hl, ks$main	; Set keyboard server to #2
 	jr	xsk$kbdint	;
 
-ks$2::	ld	(0f800h+2000+20), a	; show keyscancode
-	ld	hl, ks$1	;
-	jr	xsk$kbdint	;
+ks$main::			; Primary menu!!
+	call	ks$key		;
 
-
+	cp	'D'		; IF 'D' THEN Show (DiskStatusLinie);
+	jr	z, sks$d	;
+	cp	'N'		;
+	jr	z, ks$nkey	; IF 'N' then KeyBmode:= Normal
+	cp	'L'		;
+	jr	z, ks$lkey	; IF 'L' then KeyBmode:= LaTeX
+	cp	'I'		;
+	jr	z, ks$ikey	; IF 'I' then KeyBmode:= ISO-8859-1
+	cp	' '             ;
+	jr	z, ks$normal	; IF ' ' then Cancel mode.
+	jr	x$kbdint	; Sorry, not interested in key.
+
+; ---
+
+ks$nkey::
+	lda0			; Set normal keyboard.
+	ld	(keybmode), a	;
+	jr	ks$normal	
+
+ks$lkey::	
+	ld	a, 1		; Set LaTeX keyboard.
+	ld	(keybmode), a	;
+	jr	ks$normal	;
+
+ks$ikey::
+	ld	a, 2		; Set ISO keyboard.
+	ld	(keybmode), a	;
+	jr	ks$normal	;
+
+; -----
+
+sks$d::
+	ld	hl, dio$st	; Show disk statusline and normalize keyboard
+	call	s$statl		; 
+	jr	ks$none		; 
+
+; ** Main menu line routine  
+main$stat:	
+	ld	hl, main$msg
+	ret
+
+main$msg:
+	db	144, 'D)isk, L)aTeX, I)SO, N)ormal 930726', 0
+
+; --- END OF KEYINT.MAC ---
+

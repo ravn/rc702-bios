@@ -1,0 +1,65 @@
+	subttl	CMACROS.MAC
+
+; This file contains the macros used when entering and leaving the
+; bios in the routines which need so much stackspace that it is
+; neccessary to use a local stack.  910924
+
+; This is NOT used by the DISKIO.MAC routines.
+;
+
+EnterBios	MACRO
+	DI			; 
+	PUSH	HL		; (* Enter biosrutine *)
+	LD	HL,0		; 
+	ADD	HL,SP		; 
+	LD	SP,BIOSSTACK	; 
+	push	hl
+	EI			; 
+	ENDM
+
+LeaveBios	MACRO 	NoReturn
+	DI			;  (* Leave Bios routine and restore
+	pop	hl		;
+	LD	SP,HL		;    old stack *)
+	POP	HL		;
+	EI			;
+	IFB <NoReturn> 
+  	  RET	
+	ENDIF 
+	ENDM 
+	
+
+hexnibbledb	MACRO	nibble
+	if nibble lt 10
+	db	'0'+nibble
+	else
+	db	'A'-10+nibble
+	endif
+	endm
+	
+hexdb	MACRO  byt
+	if usephase
+	if2
+	 hexnibbledb 	%(byt shr 4)
+	 hexnibbledb	%(byt and 15)
+	else
+	 db	0,0
+	endif
+	else
+	  db 'yy'
+	endif
+	ENDM
+	
+hexwdb	MACRO wrd
+	if usephase
+	if2
+ 	 hexdb	%(wrd shr 8)
+	 hexdb	%(wrd and 255)
+	else
+	 db	0,0,0,0
+	endif
+	else
+	  db	'xxxx'
+ 	endif
+	ENDM
+	

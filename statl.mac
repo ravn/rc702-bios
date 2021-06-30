@@ -1,0 +1,77 @@
+;-----------------------------------------------------------------
+;
+; Status linie modul til Rc700 bios.
+;
+; Rutiner:	- kaldes med HL= Adressen p} funktion der returnerer
+;                 HL=^Statuslinie streng.
+;
+;  S$STATL(hl)	- s{tter nuv{rende statuslinie til den angivne
+;  U$STATL(hL)  - Hvis hl=nuv statline, s} opdateres den.
+;  N$STATL(hl)  - S{tter statuslinien til '', eller CLOCK modulets ur.
+;
+; Th 910420
+;------------------------------------------------------------------
+	subttl	File: STATL.MAC
+
+scstat	equ	0f800h + (25*80)
+sclen	equ	39		; MAX 255 tegn
+
+statrut::
+	db	0c3h		; (* JP (STATRUT) *)
+stataddr::	dw	0
+
+	IFNDEF	UseClock
+cl$stat:			; Hvis ikke inkluderet i et system med
+	 ld	hl, emptymsg	; CLOCK statuslinie s} benyt en tom linie.
+	 ret			; Denne SKAL v{re defineret inden STATL
+				; inkluderes.
+
+emptymsg:
+	 db	0
+	ENDIF
+
+; ********************************************************
+;
+; N$STATL  -- Ingen statuslinie.  Viser systemets standard statuslinie
+;
+; S$STATL  -- S{t statusliniedriver til HL.  U$STATL kaldes omg}ende.
+;
+; U$STATL  -- Update statuslinie(HL) HVIS det er den der vises netop nu.
+;             Hvis denne driver ikke er aktiv vil der ikke ske noget.
+;             Overhead ved inaktivt call er ca 4 instruktioner.
+
+N$STATL::
+	ld	hl, cl$stat	;  (* KLOKKE!!!! *)
+S$STATL::
+	ld	(stataddr), hl
+U$STATL::
+	ld	de, (stataddr)	; IF stataddr<>Updatestatuslinie THEN
+	ld	a, e		;
+	cp	l		;  
+	ret	nz		;
+	ld	a, d		;   EXIT;
+	cp	h		;
+	ret	nz		;
+				;
+	call	statrut		; hl:= statrutine; (* FUNCTION xxx: PTR *)
+	ld	de, scstat	; de:= addr(Screen[Statusline]);
+	ld 	b, sclen	; b:= MaxLen(Statuslinie);  
+u$st1::	ld	a, (hl)		; WHILE (hl^<>0) AND (b>0) DO
+	or	a		; BEGIN
+	jr	z, u$st2	;   de^:= hl^;  INC(de); INC(hl);
+	ld	(de), a		;   DEC(b);
+	inc	hl		; END;
+	inc 	de		; WHILE b>0 DO 
+	djnz	u$st1		;   de^:= ' '; DEC(b); INC(de);
+	jr	u$st3		; END;
+				;
+u$st2::	ld	a, ' '		; (* fyld op med ' ' *)
+u$st2a::			;
+	ld	(de), a		;
+	inc	de		;
+	djnz	u$st2a		;
+
+u$st3::	ret			; Common exit from statusline routines.
+
+; END OF STATL.MAC
+

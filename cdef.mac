@@ -3,34 +3,51 @@
 
 ; ----------------------------------------------------------------------
 ;
-; Denne fil indeholder faelles globale definitioner til alle Cbios.MAC moduler.
+; This file contains the common global defs for all Cbios.MAC modules.
 ;
 ; ---------------------------------------------------------------------- 
 
-		.tfcond		; Normalt listes falske if ikke.
-		page	47	; Udskriv i format passende til OKI1
-	
-no		equ	0
-yes		equ	not no
+		.tfcond		; Don't write out false if's
+				;
+;		page	47	; Make a PRN file suitable for the OKI1 printer
+		page	68	; Make a PRN file suitable for Microline printer
+				;
+no		equ	0	;
+yes		equ	not no	;
+				;
+fb$ena		equ	no	; Allow fore/background with CTRL-T/U/V
+LS$ena		equ	no	; No LineSelector in MY bios.
+decenttab	equ	yes	;
 
-fb$ena		equ	no	; Tillad fore/background med CTRL-T/U/V
-LS$ena		equ	no	; Ingen LineSelector i MIN bios.
+kbdsize		equ	32	; 32 char kbd buffer
+siosize		equ	256	; 128 char sio buffer, gives 0.5 sec buffer
+				; Important at CR/LF's
 
-kbdsize		equ	32	; 32 tegn kbd buffer
-siosize		equ	128	; 128 tegn sio buffer, giver 0.5 sek buffer
-				; Specielt vigtig ved linieskift
+crt26		equ	yes	; If defined it will set up the screen i/o
+				; correctly.
 
-crt26		equ	yes	; Skal bare v{re defineret for at ops{tte CRT
-				; korrekt.  
+SysReqkey	equ	8ch	; The CLEAR key is the SystemRequestKey.
 
-SysReqkey	equ	8ch	; CLEAR tasten er SysReqKey.
+;------------------------------- Size of drive A: and B:  (8")
 
-;------------------------------- St|rrelsen af drev A: og B:  (8")
-
-disk8sect	equ	74	; Benyt antal spor (normal 60).  Max er 75.
-d8blocksize	equ	2	; Allokering sker i 2 kb's blokke.
+disk8sect	equ	74	; Use this number of tracks (normal 60)
+				; 2 tracks are reserved, and #77 is for PARKING
+d8blocksize	equ	2	; 8" uses 2 kb blocks
 
 disk8size	equ	disk8sect* 15/d8blocksize  	
-				; 15 = 120 sekt/8 sekt pr kb
-UseHD		equ	no	; Inkluder ikke HardDisk rutiner  910404
-
+
+				; 15 = 120 sectors/8 sectors pr kb
+UseHD		equ	no	; Do not include HardDisk routines 910404
+UseClock	equ	yes	; Include Clockroutines            910420
+
+lda0		macro		; ld a,0 -- Optimization 	   930424
+		ld	a,0
+		endm
+
+iso8859		equ	yes	; Support ISO-8859-1 instead of RC for output
+
+usephase	equ	no	; For link = no, for l80 = yes. 
+
+
+; *** END OF CDEF.MAC ***
+

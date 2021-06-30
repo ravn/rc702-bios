@@ -1,15 +1,19 @@
 ;-----------------------------------------------------------------------
 ; 
-; Character output rutiner.
+; Character output routines.
 ;
-; Disse tager sig af al sk{rmstyringen
-; Sidste linie er kendetegnet med strengen "END OF CRT"
+; These take care of all the screencontrol (except the CRT interrupt)
+; The last line of this file is characterized by the string "END OF CRT"
+; and a page with a new subtitle.
 ;
-; Fore/Background er kun inkluderet hvis FB$ena er sand! 910302
-; Screenlength defineres til 25 1/2 linie hvis CRT26 er defineret!
+; Fore/Background is only included if FB$ena is true!  910302
+; Screenlength is defined to 25 1/2 line IF CRT26 is defined (at all)
+;
+; Comments anglo-saxified 910429
 ;-----------------------------------------------------------------------
 ; 
-; Sk{rm omr}de.  Ligger fra $F800..$FFD0
+; Screen area.  Positioned from $F800..$FFD0 to be consistent with
+; original implementations of this bios.
 ;
 ; +-----1--------+
 ; !34            !
@@ -37,7 +41,7 @@ LFF7F		EQU	SCRLastLine-1				  ; 9)
 
 	ifdef	crt26
 
-screensize	defl	800h-5	; Plads til taellere
+screensize	defl	800h-5			; room for hi-mem counters.
 	else
 screensize	defl	screenlength
 	endif
@@ -45,14 +49,14 @@ screensize	defl	screenlength
 
 	if1
 	 ife	FB$ena
-	 .PRINTX	.* Fore/Back ikke inkluderet.
+	 .PRINTX	.* Fore/Back not included.
 	 endif
 	endif
 
 
-SEMIACTIVE:			; Skal tegn mappes (nationale tegn)
-	DB	0		; eller ej (semigrafik aktiv)
-SourceAddr:			; Gemmer sourceaddress i INSLINE og DELLINE
+SEMIACTIVE:			; Is chars to be mapped (national charsets)
+	DB	0		; or not (semigraphics active)
+SourceAddr:			; Saving sourceaddress in INSLINE and DELLINE
 	DW	0		; 
 				;
 NOTHL:				; FUNCTION NotHL( I: INTEGER): INTEGER;
@@ -76,12 +80,14 @@ FirstOnLastLine:		; FUNCTION FirstOnLastLine: BOOLEAN;
 	LD	A,H		; 
 	CP	7		; 
 	RET			; 
-				;
+
+	ife	iso8859
 TRANSOUTCHAR:			; FUNCTION TranslateOut( c:CHAR; Table: Addr): CHAR;  
-	LD	A,(SEMIACTIVE)	; BEGIN
-	OR	A		;   IF SemiActive THEN TranslateChar:= c
-	LD	A,C		;   ELSE TranslateChar:= Translate(c, Table);
-	RET	NZ		; END;
+	 LD	A,(SEMIACTIVE)	; BEGIN
+	 OR	A		;   IF SemiActive THEN TranslateChar:= c
+	 LD	A,C		;   ELSE TranslateChar:= Translate(c, Table);
+	 RET	NZ		; END;
+	endif
 TRANSLATE:			; 
 	LD	B,0		; FUNCTION Translate(c: CHAR; Table: Addr): CHAR;
 	ADD	HL,BC		; BEGIN
@@ -136,7 +142,7 @@ EMPTYLINE:			; PROCEDURE EmptyLine; (* This line *)
 	LD	(HL),' '	; 
 	LDIR			; 
 	if	fb$ena		; 
-	 LD	A,(FB$ACTI);   IF ForeBackActive THEN
+	 LD	A,(FB$ACTI)	;   IF ForeBackActive THEN
 	 CP	0		; 
 	 RET	Z		; 
 	 LD	HL,(CB$POS)	;     Fill(^CurBitPos, 9, 0);
@@ -159,7 +165,7 @@ SCROLLUP:			; PROCEDURE ScrollUp; (* Whole screen *)
 	LD	HL,SCRLastLine	;   CurLineStart:= ScrLastLine;
 	LD	(CURLINESTART),HL;
 	if	fb$ena
-	 LD	A,(FB$ACTI);
+	 LD	A,(FB$ACTI)	;
 	 CP	0		; 
 	 JP	Z,EMPTYLINE	;   IF ForeBackActive THEN
 	 LD	HL,FB$LINE	;   BEGIN
@@ -176,8 +182,8 @@ SCROLLUP:			; PROCEDURE ScrollUp; (* Whole screen *)
 ; 
 ;
 	if	fb$ena
-LDE9A:				; MAP (HL) SK[RM TIL BITMAP
-	 LD	A,0		; 
+LDE9A:				; MAP (HL) SCREEN TO BITMAP.
+	 lda0
 	 LD	B,3		; 
 LDE9E:				; 
 	 SRL	H		; 
@@ -214,7 +220,7 @@ LDEC1:	 			;
 	endif
 	
 MoveForward:			; PROCEDURE MoveForward;
-	LD	A,0		; BEGIN
+	LDA0			; BEGIN
 	CP	C		;   IF bc=0 THEN
 	jr	Z,MoveF2	;    (* Nothing *)
 MoveF1:				;   ELSE
@@ -226,7 +232,7 @@ MoveF2:				;
 	RET			;
 				; 
 MoveBackward:			; PROCEDURE MoveBackward;  
-	LD	A,0		; BEGIN
+	LDA0			; BEGIN
 	CP	C		;   IF bc=0 THEN
 	jr	Z,MoveB1	;    (* NOTHING *)
 MoveB2:				;   ELSE
@@ -252,14 +258,14 @@ NOACTION:			;
 	RET			; 
 				; 
 CARRIAGERET:			; PROCEDURE CarriageReturn; 
-	LD	A,0		; BEGIN
+	LDA0			; BEGIN
 	LD	(XCOOR),A	;   Xcoor:= 0;
 	JP	SETCRTXY	;   SetCrtXY;
 				; END;
 CLRHOM:				; 
 	LD	HL,SCREENLASTPO	; PROCEDURE ClearHome;
 	LD	DE,SCRSECONDLAS	; BEGIN
-	LD	BC,SCREENLENGTH	;   Fill(Screen, Size(Screen), 0); (* Bagfra *)
+	LD	BC,SCREENLENGTH	;   Fill(Screen, Size(Screen), 0); (* Backwards*)
 	LD	(HL),' '	; 
 	LDDR			; 
 	CALL	CRTHOME		;   CrtHome;
@@ -282,7 +288,7 @@ CLREOL:				; PROCEDURE ClearEndOfLine;
 	LD	DE,SCREENBASE	; BEGIN
 	LD	HL,(ScrLineBase); 
 	ADD	HL,DE		;   Fill(^(ScreenPos+1), LineLength- XCOOR -1,
-	LD	DE,ScrLineLen-1	;        ' '); (* Bagfra *)
+	LD	DE,ScrLineLen-1	;        ' '); (* Backwards *)
 	ADD	HL,DE		; 
 	LD	D,H		; 
 	LD	E,L		; 
@@ -301,7 +307,7 @@ CLREOL:				; PROCEDURE ClearEndOfLine;
 	 LD	A,(FB$ACTI)
 	 CP	0		;   IF ForeBackActive THEN 
 	 RET	Z		;   BEGIN
-	 LD	HL,(ScrLineBase);     ClrEol i bitmap    
+	 LD	HL,(ScrLineBase);     ClrEol in bitmap    
 	 LD	D,0		; 
 	 LD	A,(XCOOR)	;   END;
 	 LD	E,A		; END;
@@ -325,7 +331,7 @@ CLREOL:				; PROCEDURE ClearEndOfLine;
 	 JP	MoveForward	; 
 	endif			;
 CLREOS:				; PROCEDURE ClrEOS;
-	LD	HL,(ScrLineBase)	; BEGIN
+	LD	HL,(ScrLineBase); BEGIN
 	LD	A,(XCOOR)	;   
 	LD	C,A		; 
 	LD	B,0		; 
@@ -335,7 +341,7 @@ CLREOS:				; PROCEDURE ClrEOS;
 	ADD	HL,DE		; 
 	LD	B,H		; 
 	LD	C,L		;    bc:= ScreenLength- ScreenPos- Xcoor;
-	LD	HL,SCREENLASTPO	;         (* Tegn tilbage p} sk{rmen *)
+	LD	HL,SCREENLASTPO	;         (* Fill screen backwards *)
 	LD	DE,SCRSECONDLAS	; 
 	LD	(HL),' '	; 
 	CALL	MoveBackward	;    Fill(Screen[x,y], bc, ' ');
@@ -398,7 +404,7 @@ FORWARDSPACE:			;
 	LD	(XCOOR),A	;     Xcoor:= Xcoor+1;
 	JP	SETCRTXY	;     SetCrtXY;
 FORWARDLINED:			;   END
-	LD	A,0		;   ELSE
+	LDA0			;   ELSE
 	LD	(XCOOR),A	;     Xcoor:= 0;
 	CALL	FirstOnLastLine	;     IF NOT FirstOnLastLine THEN
 	JP	NZ,CRTDOWN	;       CrtDown
@@ -409,9 +415,16 @@ FORWARDLINED:			;   END
 				;
 TABULATE:			; PROCEDURE Tabulate; 
 	CALL	FORWARDSPACE	; BEGIN
-	CALL	FORWARDSPACE	;   4 x ForwardSpace; (* Dybt godnat *)
-	CALL	FORWARDSPACE	; END;
-	jr	FORWARDSPACE	; 
+	ife	decenttab
+	 CALL	FORWARDSPACE	;   4 x ForwardSpace; (* Very nonstandard *)
+	 CALL	FORWARDSPACE	; END;
+	 jr	FORWARDSPACE	; 
+	else
+	 ld	a, (xcoor)
+	 and 	7
+	 jr	nz, tabulate
+	 ret
+	endif
 				;
 LINEDOWN:			; PROCEDURE LineDown; 
 	CALL	FirstOnLastLine	;   IF NOT FirstOnLastLine THEN
@@ -460,9 +473,9 @@ DELETELINE:			; PROCEDURE DeleteLine;
 	LD	HL,SCRLastLine	; 
 	LD	(CURLINESTART),HL
 	ife	fb$ena
-	 jp	emptyline
+	 jp	emptyline	;
 	else
-	 LD	A,(FB$ACTI);  IF ForeBackActive THEN
+	 LD	A,(FB$ACTI)	;  IF ForeBackActive THEN
 	 CP	0		;  BEGIN
 	 JP	Z,EMPTYLINE	; 
 	 LD	HL,(ScrLineBase);    DeleteBits;
@@ -505,7 +518,7 @@ INSERTLINE:			; PROCEDURE InsertLine;
 	ife	fb$ena
 	 jp	emptyline
 	else
-	 LD	A,(FB$ACTI);  IF ForeBackActive THEN
+	 LD	A,(FB$ACTI)	;  IF ForeBackActive THEN
 	 CP	0		;  BEGIN
 	 JP	Z,EMPTYLINE	; 
 	 LD	HL,(ScrLineBase);    InsertBits;
@@ -525,35 +538,35 @@ INSERTLINE:			; PROCEDURE InsertLine;
 	endif 			;
 	
 	
-	if	fb$ena		; $$$ NB: Inkluderes KUN hvis FB$ENA er sand!
+	if	fb$ena		; $$$ Note:  Only included if FB$ENA is true.
 	page
 SETBACKGROUN:			; PROCEDURE SetBackGround; 
 	LD	A,2		; BEGIN
-	LD	(FB$ACTI),A;   ForeBackActive:= 2;
+	LD	(FB$ACTI),A	;   ForeBackActive:= 2;
 	RET			; END;
 				;
 SETFOREGROUN:			; PROCEDURE SetForeGround; 
 	LD	A,1		; BEGIN
-	LD	(FB$ACTI),A;   ForebackActive:= 1;
+	LD	(FB$ACTI),A	;   ForebackActive:= 1;
 	RET			; END;
 				;
 CLRFOREGROUN:			; PROCEDURE ClearForeground;  
-	LD	HL,SCREENBASE	; (* Sletter de tegn der er forgrund tegn *)
+	LD	HL,SCREENBASE	; (* Erases the "foreground" characters *)
 	LD	DE,FB$BASE	; 
-	LD	B,0FAH		; (* Hvis bit=1 er baggrund, 0=forgrund *)
+	LD	B,0FAH		; (* If bit=1 THEN background, 0=foreground *)
 CLRNEXTEIGHT:			; 
 	LD	A,(DE)		; 
 	LD	C,8		; 
 	CP	0		; 
 	JP	NZ,CLRONLYSOME	; 
-CLREIGHT:			;  (* Sletter n{ste 8 tegn *)
+CLREIGHT:			;  (* Erases the next 8 chars *)
 	LD	(HL),' '	; 
 	INC	HL		; 
 	DEC	C		; 
 	JP	NZ,CLREIGHT	; 
 	JP	CLRDONE		; 
-CLRONLYSOME:			;  (* Sletter de af de n{ste 8 tegn som
-	RRA			;     har et 0 i deres bit position *)
+CLRONLYSOME:			;  (* Erases those of the next 8 bytes with
+	RRA			;     a zero in their bit position *)
 	JP	C,LE107		; 
 	LD	(HL),' '	; 
 LE107:				; 
@@ -611,7 +624,7 @@ CTRLCHARJP:			;
 	DW	CLREOS		; @31
 				;
 CTRLCHARS:			; PROCEDURE CtrlChars(Conout: C);
-	LD	A,0		; BEGIN
+	LDA0			; BEGIN
 	LD	(CHARSYET),A	;   CharsYet:=0;
 	LD	A,(COUTCHAR)	;   
 	RLCA			;   CASE ConoutChar OF
@@ -657,7 +670,7 @@ GOTOXY1:			;     D:= SaveXYPos; H:= LCB;
 	JP	Z,SETCRTXY	;   IF Ycoor<>0 THEN
 	LD	HL,(ScrLineBase); 
 	LD	DE,ScrLineLen	;     ScreenPos:= ScreenPos+ Ycoor*ScrLineLen;
-GOTOXY2:			;     (* Tidligere sat til (0,0) *)
+GOTOXY2:			;     (* Set earlier to (0,0) *)
 	ADD	HL,DE		; 
 	DEC	A		; 
 	jr	NZ,GOTOXY2	; 
@@ -665,29 +678,47 @@ GOTOXY2:			;     (* Tidligere sat til (0,0) *)
 	JP	SETCRTXY	; END;
 				; 
 PRINTCHAR:			; PROCEDURE PrintChar;
-	LD	HL,(ScrLineBase); (* Tegn er i ConoutChar *)
+	LD	HL,(ScrLineBase); (* Char is in ConoutChar *)
 	LD	D,0		; BEGIN
 	LD	A,(XCOOR)	;   XcoorW:= ScrLineBase+ Xcoor;
 	LD	E,A		;   
 	ADD	HL,DE		; 
-	LD	(XCOORW),HL	;   a:= ConOutChar;
-	LD	A,(COUTCHAR)	;   IF a>= $C0 THEN a:= a-$C0; (* 7-bit keyouttable *)
-	CP	0C0H		; 
-	jr	C,SETSEMIMODE	; 
-	SUB	0C0H		; 
+	LD	(XCOORW),HL	;   
+	LD	A,(COUTCHAR)	;   a:= ConOutChar;
+
+	ife	iso8859
+
+	 CP	0C0H		;  (* PLAIN RC-700 BEHAVIOUR *)
+	 jr	C,SETSEMIMODE	; IF a>= $C0 THEN a:= a-$C0; (* 7-bit keyouttable *)
+	 SUB	0C0H		; 
 SETSEMIMODE:			;   IF a>=$80 THEN
-	LD	C,A		;   
-	CP	80H		;     SemiActive:= (a and $4) (* Mask semi bit *)
-	jr	C,CRTMAPCH	;   ELSE
-	AND	4		;     
-	LD	(SEMIACTIVE),A	; 
-	LD	A,C		; 
-	jr	CRTPUTCH	; 
+	 LD	C,A		;   
+	 CP	80H		;     SemiActive:= (a and $4) (* Mask semi bit *)
+	 jr	C,CRTMAPCH	;   ELSE
+	 AND	4		;     
+	 LD	(SEMIACTIVE),A	; 
+	 LD	A,C		; 
+	 jr	CRTPUTCH	; 
 CRTMAPCH:			;     a:= KeyoutTable[a]; 
-	LD	HL,KEYOUTTABLE	;
-	CALL	TRANSOUTCHAR	; 
+	 LD	HL,KEYOUTTABLE	;
+	 CALL	TRANSOUTCHAR	; 
+
+	else
+	 if1			; ISO-8859-1
+	  .printx	.* ISO-8859-1 support.
+	 endif	 
+	
+	 ld	hl, keyouttable
+	 cp	80h		; if this is a 7-bit character, just print it
+	 jr	c, isoputch	;
+	 ld	hl, isoouttable	; First ISO character is $C0, so move in range
+	 sub	080h		; 
+isoputch:
+	 ld	c, a		; ... and lookup the appropriate value
+	 call	translate
+	endif
 CRTPUTCH:			;   
-	LD	HL,(XCOORW)	;   
+	LD	HL,(XCOORW)	;   (* Put A on screen "here" *)
 	LD	DE,SCREENBASE	; 
 	ADD	HL,DE		; 
 	LD	(HL),A		;   Screen[XcoorW]:= a;
@@ -695,7 +726,7 @@ CRTPUTCH:			;
 	ife	fb$ena
 	 ret
 	else
-	 LD	A,(FB$ACTI);   IF ForeBackActive=??? THEN
+	 LD	A,(FB$ACTI)	;   IF ForeBackActive=??? THEN
 	 CP	2		;   
 	 RET	NZ		; 
 	 LD	HL,(XCOORW)	;     S{t passende bit
@@ -719,15 +750,10 @@ ROTMASK:			;
 	 RET			; END;
 	endif
 	
-				;
+	page			;
 COUT:				; PROCEDURE Conout(C: CHAR); 
-	DI			; 
-	PUSH	HL		; (* Enter biosrutine *)
-	LD	HL,0		; 
-	ADD	HL,SP		; 
-	LD	SP,BIOSSTACK	; 
-	EI			; 
-	PUSH	HL		; 
+	EnterBios		;
+;	PUSH	HL		; (* Done in EnterBios *)
 	PUSH	AF		; 
 	PUSH	BC		; 
 	PUSH	DE		; BEGIN
@@ -737,27 +763,23 @@ COUT:				; PROCEDURE Conout(C: CHAR);
 	OR	A		; 
 	jr	Z,CRTOUT	; 
 	CALL	SAVEXY		;     SaveXy
-	jr	COUTRET	;   ELSE
+	jr	COUTRET		;   ELSE
 CRTOUT:				;   
 	LD	A,(COUTCHAR)	;     IF ConoutChar<' ' THEN
 	CP	' '		;       CtrlChars
 	jr	NC,VISIBLECHAR	;     ELSE
 	CALL	CTRLCHARS	;       PrintChar;
-	jr	COUTRET	; 
+	jr	COUTRET		; 
 VISIBLECHAR:			; 
 	CALL	PRINTCHAR	; 
 COUTRET:			; 
 	POP	DE		;   (* Leave bios rutine *)
 	POP	BC		; 
 	POP	AF		; 
-	POP	HL		; 
-	DI			; 
-	LD	SP,HL		; 
-	POP	HL		; 
-	EI			; 
-	RET			; END; (* Conout *)
+;	POP	HL		;   (* Done in Leave Bios *)
+	LeaveBios		; END; (* Conout *)
 
 ;
 ;  END OF CRT routines.
 ;
-
+

@@ -1,0 +1,119 @@
+	SUBTTL	File: CONIN.MAC
+	page
+; --------------------------------------------------
+; 
+; CONIN.MAC  Th 920107
+;
+; Gives routines KEYSTATUS and READKEY as needed by CP/M.
+;
+; Supplies byte KEYBMODE which is set by the STATL module.
+;
+; Plain & LaTeX keyboard added 920107
+; ISO-8859 keyboard added 930725
+;
+kbdkey	macro	key, klab 
+	local	kend
+	cp	key
+	jr	nz, kend
+	ld	hl, klab
+	ld	(keystr), hl
+	jp	READKEY
+kend:	;
+	endm
+
+
+
+kbdbuf:	queue	kbdsize		; The SIO buffer is defined in SERIAL.MAC
+
+KEYBMODE:
+	db	0		; Normal keyboard by startup.
+
+KEYSTR:	dw	KEYCH		;
+
+KEYSTATUS:			; FUNCTION KeyStatus: BOOLEAN; (* Keypressed *)
+;	LD	A,(KEYREADY)	; BEGIN
+;	RET			; 
+	push	ix		;   IF KEYB-FUNCKEY has key left THEN
+	push	hl
+	ld	hl, (keystr)	;
+	ld	a,(hl)		;     KeyStatus:= TRUE
+	inc	a		;
+	pop	hl
+	jr	nz, keystleave	;   ELSE
+				;
+	ld	ix, kbdbuf	;    KeyStatus:= NOT(KbdBuffer.Empty);
+	call	q$empty		;
+KEYSTLEAVE:			;
+	pop	ix		;
+	lda0			;
+	ret	z		;
+	dec	a		;
+	ret			;
+				; END;
+				
+				; (* We do not save the IX register in READKEY *)
+READKEY:			;
+	call	keystatus	; 
+	OR	A		; FUNCTION ReadKey: CHAR;
+	jr	Z,READKEY	; BEGIN
+				;    WHILE NOT KeyStatus DO Null;
+	ld	hl, (keystr)	;
+	ld	a, (hl)		;    A:= CurrentKey;
+	inc	a		;
+	jr	z, READKEY1	;    IF A<>0 THEN {real key}
+	dec	a		;
+	inc	hl		;      Update CurrentKey
+	ld	(keystr), hl	;    
+	ret			;    ELSE
+				;
+READKEY1:			;
+				;
+	ld	ix, kbdbuf	;   (* Interrupt moved to KEYINT.MAC *)
+	call	q$get		;   CurrentKey:= QueueGet(KbdQueue);
+	ld	ix, keych	;   KeyStr:= Addr(CurrentKey);
+	ld	(ix+0), a	;
+	ld	(keystr), ix	;   (* Point to string containing only this char *)
+	ld	c, a		;  
+	ld	a, (keybmode)	;
+	or	a		;   Set flags for KeybMode
+	jp	z, READKEY	;   IF KeyBmode= 0 then try again, and succed.
+	dec	a		;
+	jr	z, LATEXKEY	;   IF KeyBmode= 1 then check for LaTeX codes
+
+ISOKEY:
+	ld	a,c
+	kbdkey	'{', isokeyae
+	kbdkey	'|', isokeyo
+	kbdkey	'}', isokeyaa
+	kbdkey	'[', isokeyae1
+	kbdkey	'\', isokeyo1
+	kbdkey	']', isokeyaa1
+	jp	READKEY
+	
+LATEXKEY:
+	ld	a, c		;   ELSE {Latexmode}
+	kbdkey	'{', texkeyae
+	kbdkey	'|', texkeyo
+	kbdkey	'}', texkeyaa
+	kbdkey	'[', texkeyae1
+	kbdkey	'\', texkeyo1
+	kbdkey	']', texkeyaa1
+	jp	READKEY		; No one succeded -- keep on with the litte one
+	
+KEYCH:	db	0		; Current character as always.
+	db	0ffh		; Stop thing.
+
+texkeyae:	db	'{\ae}', 0ffh
+texkeyo:	db	'{\o}', 0ffh
+texkeyaa:	db	'{\aa}', 0ffh
+texkeyae1:	db	'{\AE}', 0ffh
+texkeyo1:	db	'{\O}', 0ffh
+texkeyaa1:	db	'{\AA}', 0ffh
+	
+isokeyae:	db	0e6h, 0ffh
+isokeyo:	db	0f8h, 0ffh
+isokeyaa:	db	0e5h, 0ffh
+isokeyae1:	db	0c6h, 0ffh
+isokeyo1:	db	0d8h, 0ffh
+isokeyaa1:	db	0c5h, 0ffh
+

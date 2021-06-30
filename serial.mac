@@ -1,3 +1,4 @@
+	subttl	File: SERIAL.MAC
 ;------------------------------------------------------------------------ 
 ; Denne fil indeholder en komplet disasemblering af det serielle interface
 ; i Piccolo bios.  Initialiseringsdelen er endnu ikke skrevet (900916)
@@ -11,9 +12,27 @@
 ;          r}t i C.MAC, og der er derfor flyttet et par konstanter.
 ;
 ; 910223 - Modificeret til buffer p} AuxIn. (SioSize)
+;
+; 920118 - Tilfoejet RC dokumentation for Baud rates.
 ;         
 ;-----------------------------------------------------------------------
-	subttl	File: SERIAL.MAC
+; CTC'en giver oprindeligt et 0.614 MHz signal men som inden bliver delt
+; for at give et signal som kan deles med 1/16/64 i SIO'en for at give den 
+; |nskede baud rate.
+;
+;	 Baud		CTC divide	SIO divide
+;	   50		193		64
+;	   75		128		64
+;	  110		 88		64
+;	  150		 64		64
+;	  300		 32		64
+;	  600		 64		16
+;	 1200		 32		16
+;	 2400		 16		16
+;	 4800		  8		16
+;	 9600		 64		 1
+;	 19k2		 32		 1
+
 ; Porte
 ;
 T$Data	equ	08h		; Terminal data og kontrol port
@@ -107,9 +126,9 @@ Lreg	MACRO	PortNr	;; Device= L, PortNr=0..7
 ; x$Stat er status byte 
 ; x$Char er portens tegn
 
-;	****	.PHASE	0DC84h
+;	****	.PHASE	0DC84h  -- oprindelig placering i Rc702 bios.
 
-aibuf:		queue	siosize	; Fra queue.mac.  siosize sat i C.MAC
+aibuf:		queue	siosize	; Fra QUEUE.MAC. siosize sat i C.MAC
 
 L$Stat::	db	TRUE	; PrinterReady
 ;** I$Stat::	db	TRUE	; AuxInReady
@@ -136,7 +155,7 @@ List::				; BIOS List entry (Ud p} printer med C)
 	jr	z, List		;   WHILE NOT ListStatus DO Null;
 				;
 	di			;   (* Disable interrupts *)
-	ld	A, FALSE	;
+	lda0			;
 	ld	(L$Stat), A	;   ListStatus:= FALSE;
 				;
 	Lreg	5		;   Set DTR+ TxEnable+ RTS+ Parity
@@ -170,23 +189,34 @@ AuxGet:					; Function AUXGET: BYTE;
 	ret				;
 
 AuxStatus::		; 0= Ej klar, $FF= klar
+
+	EnterBios
 	push	ix
+	call	AuxSt1
+	pop	ix
+	LeaveBios
+
+AuxSt1::
 	ld	ix, aibuf
 	call	q$empty
-	pop	ix
-	ld	a, 0				; ld	a, (I$Stat)
+	lda0				; ld	a, (I$Stat)
 	ret	z
 	dec	a
 	ret
 AuxIn::
-	call	AuxStatus
+	EnterBios
+	push	ix
+	push	bc
+	push	de
+	call	AuxSt1
 	; or	  a
 	jr	z, AuxIn
-	push	ix
-	ld	ix, aibuf
+;	ld	ix, aibuf
 	call	q$get
+	pop	de
+	pop	bc
 	pop	ix
-	ret
+	LeaveBios
 	
 ;-----------------------------------------------------
 ;
@@ -198,7 +228,7 @@ AuxOut::
 	or	a
 	jr	z, AuxOut
 	di
-	ld	a, FALSE
+	lda0
 	ld	(O$Stat), a
 	Ireg	5
 	ld	a, (TermBits)
@@ -297,4 +327,4 @@ ASpRxCOnd::
 	LeaveInt	
 
 ;*******	.DEPHASE
-
+

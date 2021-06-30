@@ -1,5 +1,5 @@
 	subttl	QUEUE.MAC
-;
+;
 ; QUEUE.MAC -- Thorbj|rn 910203
 ;
 ; Dette modul indeholder definition af ADT Queue.
@@ -121,4 +121,4 @@ Q$GET::				; FUNCTION Q$Get(ix:^): BYTE;
 	ret			; END;
 
 ;	end of include
-
+
