@@ -243,12 +243,12 @@ MoveB1:				;
 	jr	NZ,MoveB2	; 
 	RET			; 
 				; 
-MAKEBEEP:			; PROCEDURE MakeBeep; 
+MAKEBEEP:			; PROCEDURE MakeBeep; // ^G
 	OUT	(1CH),A		; BEGIN
 	RET			;   Port(28):= 0;
 				; END;
 				; 
-STARTGOTOXY:			; PROCEDURE StartGotoXY;        
+STARTGOTOXY:			; PROCEDURE StartGotoXY;   // ^F     
 	CALL	CRTHOME		; BEGIN                         
 	LD	A,2		;   CrtHome;                    
 	LD	(CHARSYET),A	;   CharsYet:= 2;               
@@ -373,7 +373,7 @@ CLREOS:				; PROCEDURE ClrEOS;
 	 JP	MoveBackward	; END;
 	endif			;
 	
-BACKSPACE:			; PROCEDURE BackSpace;
+BACKSPACE:			; PROCEDURE BackSpace; // ^E
 	LD	A,(XCOOR)	; BEGIN
 	CP	0		;   IF Xcoor<>0 THEN
 	jr	Z,BACKLINEUP	;   BEGIN                 
@@ -413,27 +413,27 @@ FORWARDLINED:			;   END
 				;     END;
 				; END;
 				;
-TABULATE:			; PROCEDURE Tabulate; 
+TABULATE:			; PROCEDURE Tabulate; // ^I 
 	CALL	FORWARDSPACE	; BEGIN
 	ife	decenttab
 	 CALL	FORWARDSPACE	;   4 x ForwardSpace; (* Very nonstandard *)
 	 CALL	FORWARDSPACE	; END;
 	 jr	FORWARDSPACE	; 
 	else
-	 ld	a, (xcoor)
+	 ld	a, (xcoor)	; Forward space until reaching a 8-divisible column.
 	 and 	7
 	 jr	nz, tabulate
 	 ret
 	endif
 				;
-LINEDOWN:			; PROCEDURE LineDown; 
+LINEDOWN:			; PROCEDURE LineDown;  // ^J
 	CALL	FirstOnLastLine	;   IF NOT FirstOnLastLine THEN
 	JP	NZ,CRTDOWN	;     CrtDown
 				;   ELSE
 	JP	SCROLLUP	;     ScrollUp
 				; END;
 				;
-LINEUP:				; PROCEDURE LineUp; 
+LINEUP:				; PROCEDURE LineUp; // ^Z
 	LD	HL,(ScrLineBase); BEGIN
 	LD	A,L		;   IF ScrLineBase<>0 THEN
 	OR	H		;     CrtUp
@@ -451,7 +451,7 @@ CURSORHOME:			; PROCEDURE CursorHome;
 	JP	SETCRTXY	;   CrtHome;  SetCrtXY;
 				; END;
 				;
-DELETELINE:			; PROCEDURE DeleteLine;
+DELETELINE:			; PROCEDURE DeleteLine; // ^B
 	LD	HL,(ScrLineBase); BEGIN
 	LD	B,H		;   bc:= ScrLineBase;
 	LD	C,L		; 
@@ -502,7 +502,7 @@ DELETELINE:			; PROCEDURE DeleteLine;
 	 JP	EMPTYLINE	; END;
 	endif			;
 	
-INSERTLINE:			; PROCEDURE InsertLine;
+INSERTLINE:			; PROCEDURE InsertLine; // ^A
 	LD	HL,(ScrLineBase); BEGIN
 	LD	DE,SCREENBASE	; 
 	ADD	HL,DE		; 
@@ -581,7 +581,7 @@ CLRDONE:			;
 	endif			; end of if block!
 ;
 ;
-;CTRL-CHAR JUMP TABLE
+;CTRL-CHAR JUMP TABLE FOR OUTPUT
 ;
 CTRLCHARJP:			; 
 	DW	NOACTION	; 
@@ -782,4 +782,3 @@ COUTRET:			;
 ;
 ;  END OF CRT routines.
 ;
-

@@ -136,4 +136,3 @@ main$msg:
 	db	144, 'D)isk, L)aTeX, I)SO, N)ormal 930726', 0
 
 ; --- END OF KEYINT.MAC ---
-

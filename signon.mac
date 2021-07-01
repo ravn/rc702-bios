@@ -10,4 +10,4 @@ SIGNONMSG:	DB	0CH,    'Rc702 bios version 930424.', 13, 10
 		db	'Clock: '
 		hexwdb	<cl$yy>
 		db	0DH,0AH,0
-	
+

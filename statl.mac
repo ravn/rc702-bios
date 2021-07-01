@@ -74,4 +74,3 @@ u$st2a::			;
 u$st3::	ret			; Common exit from statusline routines.
 
 ; END OF STATL.MAC
-

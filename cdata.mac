@@ -185,4 +185,4 @@ KEYINTABLE	equ	0f700H		; (8bit here!)	$F700
 CLOCKADDR	EQU	0FFFAh  ; Pointer to Clock block Structure
 CLOCKLOW	EQU	0FFFCh	; 32 bits counter for CLOCK
 CLOCKHIGH	EQU	0FFFEh	; 
-
+

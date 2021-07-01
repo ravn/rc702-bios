@@ -21,4 +21,3 @@
  ext	motorcount, waitcount, exjp, exjpaddr, motorofftime
  ext	clocklow, clockhigh
 
-

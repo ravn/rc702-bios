@@ -50,4 +50,3 @@ usephase	equ	no	; For link = no, for l80 = yes.
 
 
 ; *** END OF CDEF.MAC ***
-
