@@ -1,6 +1,6 @@
 # RC700-bios
 
-![front of old print][IMG_9878.jpeg]
+![front of old print](IMG_9878.jpeg)
 
 I reverse engineered the RC702 bios to get keyboard and serial buffering (otherwise the 19.2k modem was too fast).
 
