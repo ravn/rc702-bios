@@ -1,4 +1,6 @@
 *.COM
 *.REL
+*.CRF
+*.PRN
 MASM-80.ZIP
 
