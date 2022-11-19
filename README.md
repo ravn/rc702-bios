@@ -15,8 +15,32 @@ IMADA).
 
 To get the utilities on MacOS, run
 
-    curl -o - http://www.retroarchive.org/cpm/lang/MASM-80.ZIP 
+    curl -O http://www.retroarchive.org/cpm/lang/MASM-80.ZIP 
     unzip MASM-80.ZIP '*.COM'
+
+Manuals at http://www.jbox.dk/rc702/manuals.shtm and
+http://www.cpm.z80.de/manuals/zsid-m.pdf
+
+I've used RunCPM (https://github.com/MockbaTheBorg/RunCPM)
+to run the build on my Mac.  What took five minutes now takes 1-2 seconds.
+
+To build inside CP/M (or an emulator), run
+
+```
+m80 =ccore/z/c
+m80 =c/z/c
+l80 ccore,c,c/n/y/e
+cref80 =c
+```
+
+A `m.sub` file for compiling, linking and debugging:
+
+```
+m80 =$1
+link $1
+zsid $1.com $1.sym
+```
+
 
 Documentation:
 
