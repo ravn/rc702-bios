@@ -47,6 +47,22 @@ Documentation:
 * m80 - http://www.retroarchive.org/cpm/lang/MACRO-80.PDF
 * l80 - http://www.retroarchive.org/cpm/lang/LINK-80.PDF
 
+Note about CREF80 `.CRF` file:
+
+* ^A marks start of "identifier _defined_ on this line"
+* ^B marks start of "identifier _referred to_ on this line".  They come in the same order as in the source.
+* ^C rest of the line is a source line, copy it, and increment the line number.
+
+so 
+
+    dummy2: DW	terminit+linelength-printbyte
+
+becomes
+
+    ^BDUMMY2^ATERMINIT^ALINELENGTH^APRINTBYTE^C  E927    003E                  dummy2: DW	terminit+linelength-printbyte
+
+
+
 ## Using a PC to read RC702/RC759 diskettes
 
 A long while back I spent some time making 22DISK from Sydex
