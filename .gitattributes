@@ -1,2 +1,2 @@
-*.mac linguist-language=Assembly
-
+*.MAC text=crlf linguist-language=Assembly
+*.SUB text=crlf
