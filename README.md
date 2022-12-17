@@ -61,7 +61,19 @@ becomes
 
     ^BDUMMY2^ATERMINIT^ALINELENGTH^APRINTBYTE^C  E927    003E                  dummy2: DW	terminit+linelength-printbyte
 
+## Note on SUBMIT
 
+SUBMIT is a simple tool to submit multiple commands at once from a file.
+
+From http://www.gaby.de/cpm/manuals/archive/cpm22htm/ch1.htm#Section_1.6.7: 
+Command line parameters are on the form `$1`..`$9`.  $ is `$$`.  Control characters are on the form `^X`.
+
+The `$$$.SUB´ file written contains one 128-byte record pr line in _reverse_ order.  Each record starts with a byte indicating the length of that command
+line, and the command line, and a ASCII zero. The rest is padding.
+
+Work in progress: 
+
+    echo DIR A: |  perl -ne 's/[\r\n]//g; print chr(length($_)).$_.chr(0)' > '../RunCPM/RunCPM/A/0/$$$.SUB'
 
 ## Using a PC to read RC702/RC759 diskettes
 
