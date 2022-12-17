@@ -1,6 +1,6 @@
 program PutBios;
 
-(* Modifikation af TRACK0 910223/ Thorbj|rn *)
+(* Modifikation af TRACK0 910223/ Thorbjørn *)
 
 const 
   BiosSize=78;

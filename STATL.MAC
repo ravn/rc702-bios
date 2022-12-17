@@ -5,9 +5,9 @@
 ; Rutiner:	- kaldes med HL= Adressen p} funktion der returnerer
 ;                 HL=^Statuslinie streng.
 ;
-;  S$STATL(hl)	- s{tter nuv{rende statuslinie til den angivne
-;  U$STATL(hL)  - Hvis hl=nuv statline, s} opdateres den.
-;  N$STATL(hl)  - S{tter statuslinien til '', eller CLOCK modulets ur.
+;  S$STATL(hl)	- sætter nuværende statuslinie til den angivne
+;  U$STATL(hL)  - Hvis hl=nuv statline, så opdateres den.
+;  N$STATL(hl)  - Sætter statuslinien til '', eller CLOCK modulets ur.
 ;
 ; Th 910420
 ;------------------------------------------------------------------
@@ -22,8 +22,8 @@ stataddr::	dw	0
 
 	IFNDEF	UseClock
 cl$stat:			; Hvis ikke inkluderet i et system med
-	 ld	hl, emptymsg	; CLOCK statuslinie s} benyt en tom linie.
-	 ret			; Denne SKAL v{re defineret inden STATL
+	 ld	hl, emptymsg	; CLOCK statuslinie så benyt en tom linie.
+	 ret			; Denne SKAL være defineret inden STATL
 				; inkluderes.
 
 emptymsg:
@@ -34,7 +34,7 @@ emptymsg:
 ;
 ; N$STATL  -- Ingen statuslinie.  Viser systemets standard statuslinie
 ;
-; S$STATL  -- S{t statusliniedriver til HL.  U$STATL kaldes omg}ende.
+; S$STATL  -- Sæt statusliniedriver til HL.  U$STATL kaldes omgående.
 ;
 ; U$STATL  -- Update statuslinie(HL) HVIS det er den der vises netop nu.
 ;             Hvis denne driver ikke er aktiv vil der ikke ske noget.

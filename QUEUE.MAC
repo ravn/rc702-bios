@@ -1,11 +1,11 @@
 	subttl	QUEUE.MAC
 ;
-; QUEUE.MAC -- Thorbj|rn 910203
+; QUEUE.MAC -- Thorbjørn 910203
 ;
 ; Dette modul indeholder definition af ADT Queue.
 ;
 ; Registrene A, BC, DE, HL benyttes af adt'en.  Index pointeren IX skal
-; s{ttes inden indgang, men kun f|rste gang.  Queue {ndrer ikke IX.
+; sættes inden indgang, men kun første gang.  Queue {ndrer ikke IX.
 ;
 ; En queue defineres med NAVN:  QUEUE  Queuesize
 ; som resulterer i pseudodefinitionen
@@ -18,7 +18,7 @@
 ;
 ; PROCEDURER:  (Disse har INGEN check - pas p} )
 ; ===========
-; En byte inds{ttes i queue med 
+; En byte indsættes i queue med 
 ;   LD   A,<value>
 ;   LD   IX,<QueueNavn>
 ;   CALL Q$PUT

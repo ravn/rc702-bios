@@ -6,10 +6,10 @@
 ;
 LINESEL:			; 
 
-	iff	LS$ena		; Hvis ikke defineret, s} returner true
+	iff	LS$ena		; Hvis ikke defineret, så returner true
 	 ld	a, true
 	 ret
-	else			; ellers udfoer oprindelig kode
+	else			; ellers udfør oprindelig kode
 	
 	ADD	A, T$Ctrl	; 
 	LD	C,A		; 
@@ -52,5 +52,5 @@ OUTA2D:				;
 	EI			; 
 	RET			; 
 	
-	endif			; --- slut p} oprindelig kode til LINESEL:
+	endif			; --- slut på oprindelig kode til LINESEL:
 	

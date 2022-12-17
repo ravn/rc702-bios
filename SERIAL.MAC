@@ -5,20 +5,20 @@
 ;
 ; UARTen er en Z80 SIO.
 ;
-; Denne udgave kan ikke k|re, men er beregnet til dokumenteringsform}l.
+; Denne udgave kan ikke køre, men er beregnet til dokumenteringsformål.
 ; Koden er identisk med den i BIOS'en fra DC84 til DDDE.
 ;
-; 910115 - nu er disassembleringen startet og denne fil inkluderes (n{sten)
-;          r}t i C.MAC, og der er derfor flyttet et par konstanter.
+; 910115 - nu er disassembleringen startet og denne fil inkluderes (næsten)
+;          råt i C.MAC, og der er derfor flyttet et par konstanter.
 ;
-; 910223 - Modificeret til buffer p} AuxIn. (SioSize)
+; 910223 - Modificeret til buffer på AuxIn. (SioSize)
 ;
-; 920118 - Tilfoejet RC dokumentation for Baud rates.
+; 920118 - Tilføjet RC dokumentation for Baud rates.
 ;         
 ;-----------------------------------------------------------------------
 ; CTC'en giver oprindeligt et 0.614 MHz signal men som inden bliver delt
 ; for at give et signal som kan deles med 1/16/64 i SIO'en for at give den 
-; |nskede baud rate.
+; ønskede baud rate.
 ;
 ;	 Baud		CTC divide	SIO divide
 ;	   50		193		64
@@ -134,7 +134,7 @@ L$Stat::	db	TRUE	; PrinterReady
 ;** I$Stat::	db	TRUE	; AuxInReady
 O$Stat::	db	TRUE	; AuxOutReady
 ;** I$Char::	db	0	; AuxInChar
-I$Chr2::	db	0	; En m{rkv{rdig kopi ved printer fejl????
+I$Chr2::	db	0	; En mærkværdig kopi ved printer fejl????
 T$RR0::		db	0	; Terminal port - RR0 ved ExtStat
 T$RR1::		db	0	;                 RR1 ved SpRxCond
 L$RR0::		db	0	; Printer port  - RR0 ved ExtStat
@@ -292,7 +292,7 @@ AExtStat::
 	Ireg	RESI		; Reset Ext/Stat Int
 	LeaveInt
 
-ARxChar::			; Tegn modtaget-- saettes ind i koe.
+ARxChar::			; Tegn modtaget-- saettes ind i kø.
 	EnterInt		;
 	push	bc		;
 	push	de		;

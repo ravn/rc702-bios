@@ -175,7 +175,7 @@ KEYINTABLE	equ	0f700H		; (8bit here!)	$F700
 
 	page			;
 ;
-; In high memory we only keep the CLock counter.  If this is needed for
+; In high memory we only keep the clock counter.  If this is needed for
 ; an application it better be at a fixed address.  All the rest was
 ; moved 910302
 ;
