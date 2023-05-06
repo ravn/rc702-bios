@@ -73,7 +73,9 @@ line, and the command line, and a ASCII zero. The rest is padding.
 
 Work in progress: 
 
-    echo DIR A: |  perl -ne 's/[\r\n]//g; print chr(length($_)).$_.chr(0)' > '../RunCPM/RunCPM/A/0/$$$.SUB'
+```
+(echo DIR A:; echo DIR B:; echo submit b) |perl -e 'print reverse <>' | perl -ne 's/[\r\n]//g; printf "%-128s", chr(length($_)).$_.chr(0)' > '../RunCPM/RunCPM/A/0/$$$.SUB'
+```
 
 ## Using a PC to read RC702/RC759 diskettes
 
@@ -105,3 +107,14 @@ ORDER SIDES
 BSH 4 BLM 15 EXM 0 DSM 616 DRM 511 AL0 011111111b AL1 0 SOFS 32
 END
 ```
+
+## Termcap entry for RC702 serial connection
+
+For a serial connection to a Unix machine listening with a login prompt, a 
+termcap entry is needed on the Unix machine.  If the terminal is set to be
+"rc" the following entry works:
+
+    setenv TERMCAP "rc|rc700|Rc700 Piccolo Th 901219:co#80:li#25:am:bs:cl=^L:cm=^F%r%+ %+ :ho=^]:ce=^^:cd=^_:dl=^B:al=^A"
+
+(found in my old `.login` file saved from back then).
+

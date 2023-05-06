@@ -600,7 +600,7 @@ LD84C:				;   2 dma cycles pr burst
 	LD	A,True		; 
 	LD	(FDCRESOK),A	; 
 	CALL	MOVECONF	; 
-	EI			; --- OK.  System activeted.
+	EI			; --- OK.  System activated.
 	LD	A,1		; 
 	LD	(FLOPPYBOOT),A	; When all other fails, start from floppy
 	if 	UseHD

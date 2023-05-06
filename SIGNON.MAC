@@ -1,5 +1,5 @@
 	
-SIGNONMSG:	DB	0CH,    'Rc702 bios version 930424.', 13, 10
+SIGNONMSG:	DB	0CH,    'Rc702 bios version 930424/030506.', 13, 10
 		db	'Bios:  '
 		hexwdb	<jpcoldboot>
 		db	' - '
