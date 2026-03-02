@@ -3,4 +3,5 @@
 *.CRF
 *.PRN
 MASM-80.ZIP
-
+.idea/
+zout/
