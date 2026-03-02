@@ -8,9 +8,10 @@
 ;Build and verify (default matches SW1711 reference binary):
 ;  ~/git/rc700-sysgen/zmac/bin/zmac  -z --dri CONFI.MAC && cmp zout/CONFI.cim ../rc700-sysgen/rcbios/sw1711_files/CONFI.COM && echo MATCH
 ;
-;Build with WordStar function key mapping (-DWSTHOR):
+;Build with WordStar function key mapping (-DWSTHOR) for my patched version giving Wordstar keys:
 ;  zmac -z --dri -DWSTHOR CONFI.MAC
 ;
+; Room for a patch.
 	NOP
 	NOP
 	NOP
@@ -30,6 +31,8 @@ ADRMOD	EQU	0DA33H		; cursor addressing mode (0=XY, 1=YX)
 WR5A	EQU	0DA34H		; SIO Channel A WR5 register copy
 WR5B	EQU	0DA35H		; SIO Channel B WR5 register copy
 FD0	EQU	0DA37H		; disk type table entry 0 (drive A format)
+FDTIMO	EQU	0FFE7H		; floppy motor stop timer reload value
+OUTCON	EQU	0F680H		; output conversion table (384 bytes: out+in+semigfx)
 ;--- Cursor position coordinates (^F col row, each offset by 32) ----------------
 X17	EQU	32+17		; column 17
 X18	EQU	32+18		; column 18
@@ -384,7 +387,7 @@ KBLOOP2:
 	ADD	HL,BC
 	JP	KBLOOP2
 MOVEKBMEMORY:	
-	LD	DE,0F680H
+	LD	DE,OUTCON
 	LDIR
 	RET
 CURSORSETUP:	
@@ -464,7 +467,7 @@ STOPTIME:
 	CALL	MENU
 	RET	NC
 	CALL	MULT50HL
-	LD	(0FFE7H),HL
+	LD	(FDTIMO),HL
 	LD	(STPTIM),HL
 	RET
 SAVECB:	
@@ -571,7 +574,7 @@ MULT50HL:
 	RET
 HLDIV50:	
 	LD	DE,1
-	LD	BC,0FFCEH	;-50
+	LD	BC,-50
 L049D:	
 	ADD	HL,BC
 	LD	A,H
@@ -584,13 +587,13 @@ HLDIB50C:
 	RET
 PRINTHLDEC:	
 	LD	B,0
-	LD	DE,2710H	;10000
+	LD	DE,10000
 	CALL	PRINTHLDIVDE
-	LD	DE,03E8H	;1000
+	LD	DE,1000
 	CALL	PRINTHLDIVDE
-	LD	DE,64H	;100
+	LD	DE,100
 	CALL	PRINTHLDIVDE
-	LD	DE,0AH	;10
+	LD	DE,10
 	CALL	PRINTHLDIVDE
 	LD	DE,1
 PRINTHLDIVDE:	
@@ -626,9 +629,9 @@ PRINTHL4:
 ;
 ;
 ;
-MENU:				; A=PREFIX, HL=MSG, DE=FIRST, BC=NUMITEMS
+MENU:				; A=CHOSEN ENTRY; HL=MSG, DE=FIRST, BC=NUMBER OF ENTRIES
 	PUSH	DE
-	PUSH	BC
+	PUSH	BC		;
 	CALL	PRINTMENU
 GETCHOICE:	
 	LD	HL,CHOICEMSG
@@ -698,7 +701,7 @@ BADCHOICE:
 	LD	HL,ILLEGALMSG
 	CALL	PRINTMENU
 	JR	GETCHOICE
-READLINEBUF:	
+READLINEBUF:			; BUFFER FOR READING A LINE OF INPUT
 	DB	5
 READLINELEN:	
 	DB	0
@@ -710,6 +713,7 @@ CMDLEN:
 	DB	0
 CMDNUMBER:	
 	DB	0,0
+
 JUMPJPTABLE:		; Jump to the routine for the menu item selected.  HL=OFFSET IN JUMP TABLE AFTER CALL
 	POP	DE
 	DEC	HL
@@ -720,12 +724,13 @@ JUMPJPTABLE:		; Jump to the routine for the menu item selected.  HL=OFFSET IN JU
 	LD	D,(HL)
 	EX	DE,HL
 	JP	(HL)
+
 PRINTMENU:	
 	LD	(STARREDCMD),A
-PRINTNEXTHL:	
+PRINTNEXTHL:			; PRINT THE NULL TERMINATED STRING POINTED TO BY HL, AND CHECK FOR SPECIAL CODES IN THE PROCESS
 	LD	A,(HL)
 	OR	A
-	RET	Z
+	RET	Z		; NUL TERMINATES THE STRING
 	CP	6		; HVIS ^F SAA UDSKRIV CURSORSAETNING
 	CALL	Z,SETCURSORPOS
 	CP	5		; HVIS ^E SAA PREFIX MED '*' HVIS DET RIGTIGE NUMMER, ELLERS ' '
