@@ -118,3 +118,62 @@ termcap entry is needed on the Unix machine.  If the terminal is set to be
 
 (found in my old `.login` file saved from back then).
 
+## SIO Hardware Handshake Analysis
+
+Both SIO channels have hardware handshake enabled via WR3 Auto Enables (bit 5).
+
+### Channel A (T$Data=08h, T$Ctrl=0Ah) — Terminal/Modem port
+
+TERMINIT byte sequence: `18 04 44 03 E1 05 60 01 1B`
+
+| Register | Value | Meaning |
+|----------|-------|---------|
+| WR0 | 18h | Channel reset |
+| WR4 | 44h | 1 stop bit, no parity, x16 clock (8-N-1) |
+| WR3 | **E1h** | 8 bits/char, **Auto Enables ON**, RX enable |
+| WR5 | 60h | 8 bits/char, DTR=0, RTS=0, TX disable (initial) |
+| WR1 | 1Bh | RX int all chars, TX int enable, Ext/Status int enable |
+
+**Auto Enables (WR3 bit 5 = 1)** activates SIO hardware flow control:
+- **CTS gates the transmitter** — SIO won't send unless remote asserts CTS
+- **DCD gates the receiver** — SIO ignores incoming data unless DCD is asserted
+
+When the port is activated (AuxGet/AuxOut), WR5 is dynamically set to
+`TermBits + DTR + RTS + XENABL` = 60h + 80h + 02h + 08h = **EAh**,
+asserting RTS and DTR and enabling the transmitter. The TX interrupt
+handler (ATxBEmpty) resets TX pending after each character.
+
+The 256-byte ring buffer (`siosize equ 256` in CDEF.MAC) in the ARxChar
+ISR provides receive buffering. Combined with Auto Enables, this gives
+reliable modem communication at 19200 baud — CTS prevents TX overrun,
+and the ring buffer prevents RX data loss between interrupt service.
+
+### Channel B (L$Data=09h, L$Ctrl=0Bh) — Printer port
+
+PRINTINIT byte sequence: `18 02 10 04 44 03 60 05 60 01 1F`
+
+| Register | Value | Meaning |
+|----------|-------|---------|
+| WR0 | 18h | Channel reset |
+| WR2 | 10h | Interrupt vector |
+| WR4 | 44h | 1 stop bit, no parity, x16 clock |
+| WR3 | 60h | 7 bits/char, Auto Enables ON, **RX disable** |
+| WR5 | 60h | 8 bits/char, DTR=0, RTS=0, TX disable (initial) |
+| WR1 | 1Fh | Same as Ch.A + Status Affects Vector |
+
+Channel B is output-only (RX disabled). Auto Enables is set but only
+the CTS→TX gating matters — the printer can pause output by de-asserting
+CTS. The List routine dynamically enables TX with DTR+RTS+XENABL per
+character, same pattern as Channel A.
+
+### Comparison with original RC BIOS
+
+The original RC BIOS (rcbios/src/INIPARMS.MAC) uses WR3=61h on Channel A —
+**also with Auto Enables ON** (bit 5=1). So the hardware handshake was
+always present in the SIO initialization. The key differences in this
+rewritten BIOS are:
+- 8-N-1 (WR4=44h) instead of 7-E-1 (WR4=47h)
+- 8-bit characters (WR3=E1h) instead of 7-bit (WR3=61h)
+- 256-byte ring buffer (QUEUE ADT) instead of single-byte CHARA variable
+- 32-byte keyboard buffer (`kbdsize equ 32`) instead of flag-only KEYFLG
+
