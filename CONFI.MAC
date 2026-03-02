@@ -16,7 +16,22 @@
 	NOP
 
 	.z80
-START:	
+
+;--- 56K BIOS entry points (jump table at DA00h) -----------------------------
+CONOUT	EQU	0DA0CH		; BIOS character output
+SELDSK	EQU	0DA1BH		; BIOS select disk
+SETTRK	EQU	0DA1EH		; BIOS set track
+SETSEC	EQU	0DA21H		; BIOS set sector
+SETDMA	EQU	0DA24H		; BIOS set DMA address
+READ	EQU	0DA27H		; BIOS read sector
+WRITE	EQU	0DA2AH		; BIOS write sector
+;--- 56K BIOS runtime variables (after jump table) ---------------------------
+ADRMOD	EQU	0DA33H		; cursor addressing mode (0=XY, 1=YX)
+WR5A	EQU	0DA34H		; SIO Channel A WR5 register copy
+WR5B	EQU	0DA35H		; SIO Channel B WR5 register copy
+FD0	EQU	0DA37H		; disk type table entry 0 (drive A format)
+
+START:
 	EX	(SP),HL
 	LD	SP,KBDANISH
 	PUSH	HL
@@ -107,10 +122,10 @@ PRINTSETUP:
 	DW	PRINTSENDSIZ
 	DW	PRINTRECSIZE
 TERMSTOPBIT:	
-	LD	HL,CBTREG4
+	LD	HL,PSIOA_WR4
 	JP	STOPBIT
 PRINTSTOPBIT:	
-	LD	HL,CBPREG4
+	LD	HL,PSIOB_WR4
 	JP	STOPBIT
 STOPBIT:	
 	LD	A,(HL)
@@ -137,10 +152,10 @@ STOPBIT:
 	LD	(HL),A
 	RET
 TERMPARITY:	
-	LD	HL,CBTREG4
+	LD	HL,PSIOA_WR4
 	JP	PARITY
 PRINTPARITY:	
-	LD	HL,CBPREG4
+	LD	HL,PSIOB_WR4
 	JP	PARITY
 PARITY:	
 	LD	A,(HL)
@@ -164,37 +179,37 @@ PARITY:
 	LD	(HL),A
 	RET
 TERMBAUDRATE:	
-	LD	HL,CURTERMBAUD
+	LD	HL,BAUDNUMA
 	CALL	BAUDRATE
 	RET	NC
 	LD	A,C
-	LD	(CBTERMBAUD),A
-	LD	A,(CBTREG4)
+	LD	(COUNT0),A
+	LD	A,(PSIOA_WR4)
 	AND	'?'
 	ADD	A,B
-	LD	(CBTREG4),A
+	LD	(PSIOA_WR4),A
 	RET
 SETCTC0:	
 	LD	A,'G'	;TERMINAL BAUD RATE
 	OUT	(0CH),A
-	LD	A,(CBTERMBAUD)
+	LD	A,(COUNT0)
 	OUT	(0CH),A
 	RET
 PRINTBAUDRAT:	
-	LD	HL,CURPRINTBAUD
+	LD	HL,BAUDNUMB
 	CALL	BAUDRATE
 	RET	NC
 	LD	A,C
-	LD	(CBPRINTBAUD),A
-	LD	A,(CBPREG4)
+	LD	(COUNT1),A
+	LD	A,(PSIOB_WR4)
 	AND	'?'
 	ADD	A,B
-	LD	(CBPREG4),A
+	LD	(PSIOB_WR4),A
 	RET
 SETCTC1:	
 	LD	A,'G'	;PRINTER BAUD RATE
 	OUT	(0DH),A
-	LD	A,(CBPRINTBAUD)
+	LD	A,(COUNT1)
 	OUT	(0DH),A
 	RET
 BAUDRATE:	
@@ -220,7 +235,7 @@ BAUDRATE:
 	SCF
 	RET
 SETSIOA:	
-	LD	HL,CBTERM	;TERMINAL PORT 
+	LD	HL,PSIOA	;TERMINAL PORT 
 	LD	B,9
 	LD	C,0AH
 	DI
@@ -228,7 +243,7 @@ SETSIOA:
 	EI
 	RET
 SETSIOB:	
-	LD	HL,CBPRINT	;PRINTER PORT
+	LD	HL,PSIOB	;PRINTER PORT
 	LD	B,0BH
 	LD	C,0BH
 	DI
@@ -236,23 +251,23 @@ SETSIOB:
 	EI
 	RET
 TERMSENDSIZE:	
-	LD	HL,CBTREG5
+	LD	HL,PSIOA_WR5
 	CALL	SENDSIZE
 	RET	NC
 	AND	60H
-	LD	(0DA34H),A
+	LD	(WR5A),A
 	RET
 TERMRECSIZE:	
-	LD	HL,CBTREG3
+	LD	HL,PSIOA_WR3
 	CALL	RECSIZE
 	RET
 PRINTSENDSIZ:	
-	LD	HL,CBPREG5
+	LD	HL,PSIOB_WR5
 	CALL	SENDSIZE
 CHARSIZE:	
 	RET	NC
 	AND	60H
-	LD	(0DA35H),A
+	LD	(WR5B),A
 	RET
 PRINTRECSIZE:	
 	RET
@@ -321,12 +336,12 @@ L02F6:
 ;
 KBSETUP:	
 	LD	HL,KBMSG
-	LD	A,(CBLANGUAGE)
+	LD	A,(CONVNUM)
 	LD	DE,1
 	LD	BC,7
 	CALL	MENU
 	RET	NC
-	LD	(CBLANGUAGE),A
+	LD	(CONVNUM),A
 	LD	HL,KBDANISH
 	LD	BC,0180H
 KBLOOP1:	
@@ -339,7 +354,7 @@ MOVEKBCONFIG:
 	LDIR
 	RET
 SETKBMEMORY:	
-	LD	A,(CBLANGUAGE)
+	LD	A,(CONVNUM)
 	LD	HL,KBDANISH
 	LD	BC,0180H
 KBLOOP2:	
@@ -364,37 +379,37 @@ CURSORSETUP:
 	DW	CURSXB4Y
 CURSORFORM:	
 	LD	HL,CURSFORMMSG
-	LD	A,(CBCURSOR)
+	LD	A,(CURSNUM)
 	LD	DE,1
 	LD	BC,4
 	CALL	MENU
 	RET	NC
 	LD	A,L
 	DEC	A
-	LD	(CBCURSOR),A
+	LD	(CURSNUM),A
 	AND	3
 	RLCA
 	RLCA
 	RLCA
 	RLCA
 	LD	C,A
-	LD	A,(CBVIDEO4)
+	LD	A,(PAR4)
 	AND	0CFH
 	OR	C
-	LD	(CBVIDEO4),A
+	LD	(PAR4),A
 	RET
 SETVIDEO:	
 	LD	A,'@'
 	OUT	(01H),A
 	LD	A,0
 	OUT	(01H),A
-	LD	A,(CBVIDEO1)
+	LD	A,(PAR1)
 	OUT	(00H),A
-	LD	A,(CBVIDEO2)
+	LD	A,(PAR2)
 	OUT	(00H),A
-	LD	A,(CBVIDEO3)
+	LD	A,(PAR3)
 	OUT	(00H),A
-	LD	A,(CBVIDEO4)
+	LD	A,(PAR4)
 	OUT	(00H),A
 	LD	A,'#'
 	OUT	(01H),A
@@ -404,13 +419,13 @@ SETVIDEO:
 ;
 CURSXB4Y:	
 	LD	HL,CURSADDRMSG
-	LD	A,(CBXB4Y)
+	LD	A,(XYFLG)
 	LD	DE,1
 	LD	BC,2
 	CALL	MENU
 	RET	NC
-	LD	(CBXB4Y),A
-	LD	(0DA33H),A
+	LD	(XYFLG),A
+	LD	(ADRMOD),A
 	RET
 ;
 ;
@@ -419,7 +434,7 @@ CURSXB4Y:
 STOPTIME:	
 	LD	HL,STOPTIME1MSG
 	CALL	PRINTMENU
-	LD	HL,(CBSTOPTIME)
+	LD	HL,(STPTIM)
 	CALL	HLDIV50
 	CALL	PRINTHLDEC
 	LD	HL,STOPTIME2MSG
@@ -429,7 +444,7 @@ STOPTIME:
 	RET	NC
 	CALL	MULT50HL
 	LD	(0FFE7H),HL
-	LD	(CBSTOPTIME),HL
+	LD	(STPTIM),HL
 	RET
 SAVECB:	
 	LD	A,1
@@ -439,10 +454,10 @@ RWSECTOR:
 	OR	A
 	JR	Z,RSECTOR
 	LD	BC,0
-	CALL	0DA2AH
+	CALL	WRITE
 	JR	CHECKRWRES
 RSECTOR:	
-	CALL	0DA27H
+	CALL	READ
 CHECKRWRES:	
 	CP	0
 	JP	NZ,BADSECTOR
@@ -453,7 +468,7 @@ READCB:
 	CP	2
 	JR	Z,READDRIVEC
 	POP	AF
-	LD	HL,0DA37H	;DRIVE A FORMAT
+	LD	HL,FD0	;DRIVE A FORMAT
 	LD	B,(HL)
 	PUSH	BC
 	PUSH	AF
@@ -467,55 +482,55 @@ MINISYSTEM:
 SETTRACK0FOR:	
 	LD	(HL),A
 	LD	BC,0
-	CALL	0DA1BH	;BIOS - SELDSK 0
+	CALL	SELDSK	;BIOS - SELDSK 0
 	JP	READCBBLOCKS
 READDRIVEC:	
 	LD	B,0
 	LD	C,2
-	CALL	0DA1BH	;BIOS - SELDSK 2
+	CALL	SELDSK	;BIOS - SELDSK 2
 READCBBLOCKS:	
 	LD	BC,0
-	CALL	0DA1EH	; SET TRACK
+	CALL	SETTRK	; SET TRACK
 	LD	BC,1
-	CALL	0DA21H	; SET SECTOR
+	CALL	SETSEC	; SET SECTOR
 	LD	BC,CBBLOCK1
-	CALL	0DA24H	; SET DMA
+	CALL	SETDMA	; SET DMA
 	POP	AF
 	PUSH	AF	;POP/PUSH OPERATION CODE IN A
 	CALL	RWSECTOR
 	LD	BC,CBKB
-	CALL	0DA24H	;SET DMA
+	CALL	SETDMA	;SET DMA
 	LD	BC,2
-	CALL	0DA21H	;SET SECTOR
+	CALL	SETSEC	;SET SECTOR
 	POP	AF
 	PUSH	AF
 	CALL	RWSECTOR
 	LD	BC,CBBLOCK3
-	CALL	0DA24H	;SETDMA
+	CALL	SETDMA	;SETDMA
 	LD	BC,3
-	CALL	0DA21H	;SETSECTOR
+	CALL	SETSEC	;SETSECTOR
 	POP	AF
 	PUSH	AF
 	CALL	RWSECTOR
 	LD	BC,CBBLOCK4
-	CALL	0DA24H
+	CALL	SETDMA
 	LD	BC,4
-	CALL	0DA21H
+	CALL	SETSEC
 	POP	AF
 	CALL	RWSECTOR
 	LD	A,(DRIVE)	; DONE WITH R/W.  NOW CLEAN UP
 	CP	2
 	JP	Z,DONEHD
-	LD	HL,0DA37H	;RESTORE ORIGINAL FLOPPY TYPE
+	LD	HL,FD0	;RESTORE ORIGINAL FLOPPY TYPE
 	POP	AF
 	LD	(HL),A
 	LD	BC,0
-	CALL	0DA1BH
+	CALL	SELDSK
 	RET
 DONEHD:	
 	LD	B,0
 	LD	C,2
-	CALL	0DA1BH
+	CALL	SELDSK
 	RET
 MULT10HL:	
 	ADD	HL,HL
@@ -717,29 +732,29 @@ PRINTBDOS:
 	JR	PRINTNEXTHL
 PRINTBIOS:	
 	LD	C,A	;CONTROL CHARACTERS GOES HERE.
-	CALL	0DA0CH
+	CALL	CONOUT
 	INC	HL
 	JR	PRINTNEXTHL
 SETCURSORPOS:	
 	LD	C,A
-	CALL	0DA0CH	;SEND ^F
+	CALL	CONOUT	;SEND ^F
 	INC	HL
 	LD	D,(HL)
 	INC	HL
 	LD	E,(HL)	;DE = CURSOR POSITION
-	LD	A,(0DA33H)	;CHECK BIOS FOR WHICH FORMAT TO USE.
+	LD	A,(ADRMOD)	;CHECK BIOS FOR WHICH FORMAT TO USE.
 	OR	A
 	JP	NZ,CURSORBCKWRD
 	LD	C,D
-	CALL	0DA0CH
+	CALL	CONOUT
 	LD	C,E
-	CALL	0DA0CH
+	CALL	CONOUT
 	RET
 CURSORBCKWRD:	
 	LD	C,E
-	CALL	0DA0CH
+	CALL	CONOUT
 	LD	C,D
-	CALL	0DA0CH
+	CALL	CONOUT
 	RET
 STARREDCMD:	
 	DB	0FFH
@@ -887,61 +902,109 @@ L0D5F:
 L0D6A:	
 	DB	0C1H,80H,58H,40H,20H,40H,20H
 	DB	10H,08H,04H,02H
+;==============================================================================
+;= HARDWARE CONFIGURATION BLOCK — Track 0, logical sector 1 (physical 2)     =
+;= 128 bytes read from disk by READCB at startup, written back by SAVECB.     =
+;= Layout matches INIPARMS.MAC in the BIOS source (rcbios/src/INIPARMS.MAC). =
+;= All values are zero in the .COM file; overwritten from disk at runtime.    =
+;==============================================================================
 CBBLOCK1	equ $
 cbblock3	equ $+2*128
 cbblock4	equ $+3*128
-
-	DB	0
-CBTERMBAUD:	
-	DB	0,0
-CBPRINTBAUD:	
-	DB	0,0,0,0,0
 ;
+;--- Z80 CTC baud rate generators (Ch0-1) and system timers (Ch2-3) -----------
 ;
-CBTERM:	
-	DB	0,0
-CBTREG4:	
-	DB	0,0
-CBTREG3:	
-	DB	0,0
-CBTREG5:	
-	DB	0,0,0
+	DB	0		; +0:  MODE0  - CTC Ch0 timer mode (0x47)
+COUNT0:
+	DB	0		; +1:  COUNT0 - CTC Ch0 divisor (SIO-A baud rate)
+	DB	0		; +2:  MODE1  - CTC Ch1 timer mode (0x47)
+COUNT1:
+	DB	0		; +3:  COUNT1 - CTC Ch1 divisor (SIO-B baud rate)
+	DB	0		; +4:  MODE2  - CTC Ch2 counter mode (0xD7, display)
+	DB	0		; +5:  COUNT2 - CTC Ch2 count (0x01)
+	DB	0		; +6:  MODE3  - CTC Ch3 counter mode (0xD7, floppy)
+	DB	0		; +7:  COUNT3 - CTC Ch3 count (0x01)
 ;
+;--- Z80 SIO Channel A init block (9 bytes, OTIR to port 0Ah) ----------------
+;  BIOS role: printer (LST:).  CONFI menu: "TERMINAL PORT" (labels swapped).
 ;
-CBPRINT:	
-	DB	0,0,0,0
-CBPREG4:	
-	DB	0,0
-CBPREG3:	
-	DB	0,0
-CBPREG5:	
-	DB	0
+PSIOA:
+	DB	0		; +8:  PSIOA[0] - WR0 channel reset (0x18)
+	DB	0		; +9:  PSIOA[1] - select WR4 (0x04)
+PSIOA_WR4:
+	DB	0		; +10: PSIOA[2] - WR4: clock mode | stop bits | parity
+	DB	0		; +11: PSIOA[3] - select WR3 (0x03)
+PSIOA_WR3:
+	DB	0		; +12: PSIOA[4] - WR3: RX bits/char, auto enable, RX enable
+	DB	0		; +13: PSIOA[5] - select WR5 (0x05)
+PSIOA_WR5:
+	DB	0		; +14: PSIOA[6] - WR5: TX bits/char, DTR, RTS, TX enable
+	DB	0		; +15: PSIOA[7] - select WR1 (0x01)
+	DB	0		; +16: PSIOA[8] - WR1: interrupt enables (0x1B)
 ;
+;--- Z80 SIO Channel B init block (11 bytes, OTIR to port 0Bh) ---------------
+;  BIOS role: terminal (RDR:/PUN:).  CONFI menu: "PRINTER PORT" (swapped).
 ;
-	DB	0,0,0,0,0,0
-CBVIDEO1:	
-	DB	0
-CBVIDEO2:	
-	DB	0
-CBVIDEO3:	
-	DB	0
-CBVIDEO4:	
-	DB	0
-;G=(BLINKREVERSE, BLINKUNDERSCORE, REVERSE, UNDERSCORE), H=HORIZONTAL RET CO
-	DB	0
-	DB	0,0,0
-CBCURSOR:	
-	DB	0
-CBLANGUAGE:	
-	DB	0
-CURTERMBAUD:	
-	DB	0
-CURPRINTBAUD:	
-	DB	0
-CBXB4Y:	
-	DB	0
-CBSTOPTIME:	
-	DB	0,0
+PSIOB:
+	DB	0		; +17: PSIOB[0]  - WR0 channel reset (0x18)
+	DB	0		; +18: PSIOB[1]  - select WR2 (0x02)
+	DB	0		; +19: PSIOB[2]  - WR2 interrupt vector (0x10)
+	DB	0		; +20: PSIOB[3]  - select WR4 (0x04)
+PSIOB_WR4:
+	DB	0		; +21: PSIOB[4]  - WR4: clock mode | stop bits | parity
+	DB	0		; +22: PSIOB[5]  - select WR3 (0x03)
+PSIOB_WR3:
+	DB	0		; +23: PSIOB[6]  - WR3: RX bits/char, auto enable
+	DB	0		; +24: PSIOB[7]  - select WR5 (0x05)
+PSIOB_WR5:
+	DB	0		; +25: PSIOB[8]  - WR5: TX bits/char, DTR, RTS
+	DB	0		; +26: PSIOB[9]  - select WR1 (0x01)
+	DB	0		; +27: PSIOB[10] - WR1: interrupt enables (0x1F)
+;
+;--- AM9517 DMA controller mode registers ------------------------------------
+;
+	DB	0		; +28: DMODE0 - DMA Ch0 mode (0x48, WD1000 hard disk)
+	DB	0		; +29: DMODE1 - DMA Ch1 mode (0x49, floppy disk)
+	DB	0		; +30: DMODE2 - DMA Ch2 mode (0x4A, display)
+	DB	0		; +31: DMODE3 - DMA Ch3 mode (0x4B, display)
+;
+;--- Intel 8275 CRT controller parameters ------------------------------------
+;
+PAR1:
+	DB	0		; +32: PAR1 - 80 chars/row (0x4F)
+PAR2:
+	DB	0		; +33: PAR2 - 25 rows/frame (0x98)
+PAR3:
+	DB	0		; +34: PAR3 - underline pos, char height (0x7A)
+PAR4:
+	DB	0		; +35: PAR4 - cursor format in bits 4-5 (0x4D)
+;
+;--- uPD765 FDC specify parameters -------------------------------------------
+;
+	DB	0		; +36: FDPROG - program length (3)
+	DB	0,0,0		; +37-39: specify(03), step/unload(DF), head load(28)
+;
+;--- CONFI user-configurable parameters --------------------------------------
+;
+CURSNUM:
+	DB	0		; +40: cursor format index (0-3: blink+rev/blink+ul/rev/ul)
+CONVNUM:
+	DB	0		; +41: conversion table index (0-6: DA/SE/DE/UK/US/FR/LIB)
+BAUDNUMA:
+	DB	0		; +42: SIO-A baud rate index (0-10: 50..19200 bps)
+BAUDNUMB:
+	DB	0		; +43: SIO-B baud rate index (0-10: 50..19200 bps)
+XYFLG:
+	DB	0		; +44: cursor addressing mode (0=H,V  1=V,H)
+STPTIM:
+	DB	0,0		; +45-46: motor stop timer (word, 1/50s ticks; 250=5sec)
+;
+;--- Disk type config, CTC2, boot disk (not modified by CONFI) ---------------
+;  +47-62: INFD0-INFD15 disk type table   +63: INFDXX terminator (0xFF)
+;  +64: NDTAB   +65-67: NDT1   +68-70: CTC2 (MODE4,COUNT4,MODE5)
+;  +71: ibootd (boot disk)   +72-127: padding to 128 bytes
+;  Values below are residual .COM file data, overwritten by READCB at runtime.
+;
 	DB	0E5H,0D5H,2AH,0BBH,3AH,0E5H,0E5H
 	DB	2AH,96H,3AH,0E5H,21H,0C0H,02H
 	DB	0E5H,21H,40H,30H,0E5H,0C5H,0C9H
@@ -954,10 +1017,13 @@ CBSTOPTIME:
 	DB	98H,3AH,0E5H,0EBH,0E9H,0D5H,0CDH
 	DB	0C8H,35H,0B7H,0CAH,0A2H,30H,11H
 	DB	8DH,38H,0CDH,0DEH
+;==============================================================================
+;= CONVERSION TABLE BUFFERS — Track 0, logical sectors 2-4 (physical 3-5)    =
+;= 3 x 128 bytes = 384 bytes, read/written alongside CBBLOCK1 by READCB.     =
+;= On disk: output conv (128B) + input conv (128B) + semigraphic map (128B).  =
+;= Values below are residual .COM file data, overwritten by READCB at runtime.=
+;==============================================================================
 CBKB:
-;Residual Track 0 BIOS data from SW1711 disk (loaded at runtime by READCB).
-;These 512 bytes are overwritten when CONFI.COM runs; values here match the
-;reference binary extracted from the SW1711-I8.imd system disk.
 	DB	35H,0CDH,72H,2FH,0FEH,0DH,0C2H,7AH,30H,0E5H,0C5H,2AH,9AH,3AH,0E5H,2AH
 	DB	9CH,3AH,0E5H,2AH,98H,3AH,0E9H,0D1H,0E1H,22H,98H,3AH,0E1H,22H,9CH,3AH
 	DB	0E1H,22H,9AH,3AH,0EBH,0E9H,0BH,62H,6BH,0C3H,45H,30H,3AH,93H,3AH,0B7H
@@ -982,6 +1048,10 @@ CBKB:
 	DB	31H,4,0C3H,0D1H,31H,0CH,77H,2BH,0C3H,94H,31H,3AH,0A7H,3AH,0B7H,0C2H
 	DB	0E1H,31H,0CDH,0B7H,4,36H,0,2BH,0CDH,6FH,2CH,78H,0B7H,0C4H,87H,4
 	DB	0F1H,0E1H,22H,0A2H,3AH,26H,0,69H,22H,96H,3AH,0C1H,0D1H,0E1H,1,7
+;==============================================================================
+;= STACK AREA — 128 bytes (SP initialized to KBDANISH, grows down to here)   =
+;= Residual .COM file data; used as runtime stack, never read from/to disk.   =
+;==============================================================================
 STACK:
 	DB	32H,0C3H,0F6H,2FH,0AFH,0C2H,3EH,1,0C3H,2EH,31H,0C1H,1,0F8H,2FH,0C5H
 	DB	2AH,0BDH,3AH,3EH,1,32H,0A9H,3AH,0E5H,0CDH,8AH,2FH,0F5H,0CDH,89H,2CH
